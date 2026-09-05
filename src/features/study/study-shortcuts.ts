@@ -16,12 +16,14 @@ type ShortcutContext = {
   result: ReviewResult | null;
   difficulty: ReviewDifficulty | null;
   typingTarget: boolean;
+  controlsTarget?: boolean;
 };
 
-export function studyShortcut({ key, startGateOpen, revealed, result, difficulty, typingTarget }: ShortcutContext): StudyShortcut {
-  // The gate owns the first keypress. It must never leak through into reveal or grading.
+export function studyShortcut({ key, startGateOpen, revealed, result, difficulty, typingTarget, controlsTarget = false }: ShortcutContext): StudyShortcut {
+  // Toolbar/select controls keep their normal keyboard behavior while the timer gate is open.
+  if (typingTarget || controlsTarget) return null;
+  // Outside those controls, the gate owns the first keypress. It must never leak through.
   if (startGateOpen) return { type: "start" };
-  if (typingTarget) return null;
   if (key === " " && !revealed) return { type: "reveal" };
   if (!revealed) return null;
 
