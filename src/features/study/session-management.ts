@@ -145,10 +145,14 @@ function removeReviewsInEnvelope(
     if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
   }
 
-  // Only the historical review records are removed. The card/mode aggregates that
-  // drive mastery, scheduling, adaptive priority, response-time memory, and staged
-  // unlocking are deliberately left untouched.
-  if (changed) next.updatedAt = Math.max(next.updatedAt, now);
+  // Session deletion removes the historical review records themselves, but leaves
+  // the card/mode aggregates that drive mastery, scheduling, adaptive priority,
+  // response-time memory, and staged unlocking untouched.
+  if (changed) {
+    const deletedIds = [...new Set(reviewIds)];
+    next.pendingDeletedReviewIds = [...new Set([...(next.pendingDeletedReviewIds ?? []), ...deletedIds])];
+    next.updatedAt = Math.max(next.updatedAt, now);
+  }
   return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
 }
 
@@ -187,3 +191,7 @@ export function deleteReviewsFromEnvelope(envelope: DeckProgressEnvelope, review
     now,
   );
 }
+
+// Backward-compatible export used by Stats. The behavior is now a true history
+// deletion rather than a hidden/excluded marker.
+export const deleteReviewsFromStatsInEnvelope = deleteReviewsFromEnvelope;
