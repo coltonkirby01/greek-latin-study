@@ -13,9 +13,9 @@ permissions:
   id-token: write
 
 concurrency:
-  # Keep this distinct from GitHub's legacy Pages publisher. The deploy job
-  # waits for that publisher below, then replaces its output with `dist`.
-  group: pages-custom
+  # Keep live main deployments independent from pull-request checks so
+  # frontend work cannot cancel the production Pages deployment.
+  group: pages-custom-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
