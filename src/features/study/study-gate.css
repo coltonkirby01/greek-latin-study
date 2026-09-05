@@ -65,17 +65,9 @@
   font-weight: 800;
 }
 
-.study-warmup-button {
-  width: 100%;
-  justify-content: center;
-}
-
 .study-start-card > span {
   font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: 0.02em;
 }
 
-.flashcard-face { justify-content: flex-start; }
-.flashcard-face > .card-side:first-child { margin-top: auto; }
-.flashcard-face > :last-child { margin-bottom: auto; }
+.flashcard-face { justify-content: safe center; }
