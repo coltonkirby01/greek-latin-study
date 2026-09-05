@@ -28,7 +28,7 @@
 .study-filter-menu-body {
   padding: 0 1rem 1rem;
   display: grid;
-  gap: 0.85rem;
+  gap: 0.7rem;
   border-top: 1px solid var(--border);
 }
 
@@ -39,9 +39,9 @@
 }
 
 .filter-section {
-  padding: 0.85rem;
+  padding: 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 0.8rem;
+  border-radius: 0.7rem;
   background: var(--panel-2);
 }
 
@@ -61,8 +61,8 @@
 
 .filter-option-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 0.45rem;
+  grid-template-columns: 1fr;
+  gap: 0.4rem;
 }
 
 .filter-checkbox {
@@ -80,24 +80,25 @@
 
 .filter-checkbox.is-nested { margin-left: 0.35rem; }
 .filter-checkbox.is-disabled { opacity: 0.55; cursor: not-allowed; }
-.filter-checkbox input { width: 1rem; height: 1rem; accent-color: var(--burgundy); }
+.filter-checkbox input,
+.filter-disclosure-checkbox { width: 1rem; height: 1rem; accent-color: var(--burgundy); }
 .filter-checkbox-copy { min-width: 0; display: grid; gap: 0.08rem; }
 .filter-checkbox-copy strong { font-size: 0.78rem; }
 .filter-checkbox-copy small { color: var(--ink-soft); font-size: 0.68rem; }
-.filter-count { color: var(--ink-soft); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
+.filter-count { color: var(--ink-soft); font-size: 0.7rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .filter-disclosure {
-  grid-column: 1 / -1;
+  width: 100%;
   border: 1px solid var(--border);
-  border-radius: 0.65rem;
+  border-radius: 0.7rem;
   background: var(--panel);
   overflow: hidden;
 }
 
-.filter-disclosure.is-nested { margin-top: 0.65rem; background: var(--panel-2); }
+.filter-disclosure.is-nested { margin-top: 0.55rem; background: var(--panel-2); }
 .filter-disclosure > summary {
-  min-height: 44px;
-  padding: 0.58rem 0.7rem;
+  min-height: 48px;
+  padding: 0.62rem 0.72rem;
   display: flex;
   gap: 0.75rem;
   align-items: center;
@@ -105,19 +106,23 @@
   cursor: pointer;
   list-style: none;
 }
+.filter-disclosure-leading,
+.filter-disclosure-trailing { display: flex; align-items: center; gap: 0.55rem; min-width: 0; }
+.filter-disclosure-leading { flex: 1; }
+.filter-disclosure-checkbox { flex: 0 0 auto; cursor: pointer; }
 .filter-disclosure-copy { min-width: 0; display: grid; gap: 0.1rem; }
-.filter-disclosure-copy strong { font-size: 0.8rem; }
+.filter-disclosure-copy strong { font-size: 0.82rem; }
 .filter-disclosure-copy small { color: var(--ink-soft); font-size: 0.69rem; }
 .filter-disclosure-body {
-  padding: 0.7rem;
+  padding: 0.65rem;
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
   border-top: 1px solid var(--border);
 }
-.filter-disclosure-body > .filter-section { padding: 0.7rem; background: var(--panel); }
+.filter-disclosure-body > .filter-section { padding: 0.65rem; background: var(--panel); }
 .filter-disclosure.is-nested .filter-disclosure-body > .filter-section { background: var(--panel-2); }
 
-.filter-subsection-stack { display: grid; gap: 0.65rem; }
+.filter-subsection-stack { display: grid; gap: 0.55rem; }
 .filter-subsection-heading { margin-bottom: 0.35rem; align-items: center; }
 .filter-subsection-label { margin: 0.15rem 0 0; color: var(--ink-soft); font-size: 0.7rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
 
@@ -127,6 +132,5 @@
   .study-filter-menu > summary > strong { grid-column: 1; text-align: left; font-size: 0.75rem; }
   .filter-chevron { grid-column: 2; grid-row: 1 / span 2; }
   .filter-section-heading { flex-direction: column; }
-  .filter-option-grid { grid-template-columns: 1fr; }
   .filter-checkbox.is-nested { margin-left: 0; }
 }
