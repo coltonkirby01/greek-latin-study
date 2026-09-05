@@ -2,6 +2,15 @@ import type { StudyCard } from "./types";
 
 export type OptionalSelection = ReadonlySet<string> | null;
 
+export const HENLE_PART1_SECTIONS = ["Nouns", "Adjectives", "Adverbs", "Numerals", "Pronouns", "Verbs"] as const;
+
+export type GrammarCardFilters = {
+  sections: OptionalSelection;
+  verbSubsections: OptionalSelection;
+  voices: OptionalSelection;
+  formGroups: OptionalSelection;
+};
+
 export function selectionIncludes(selection: OptionalSelection, value: string) {
   return selection === null || selection.has(value);
 }
@@ -21,12 +30,7 @@ export function grammarFormGroups(card: StudyCard) {
   return single ? [single] : [];
 }
 
-export function matchesGrammarCard(card: StudyCard, filters: {
-  sections: OptionalSelection;
-  verbSubsections: OptionalSelection;
-  voices: OptionalSelection;
-  formGroups: OptionalSelection;
-}) {
+export function matchesGrammarCard(card: StudyCard, filters: GrammarCardFilters) {
   const section = card.category ?? "";
   if (!selectionIncludes(filters.sections, section)) return false;
   if (section !== "Verbs") return true;
