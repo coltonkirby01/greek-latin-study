@@ -157,42 +157,23 @@ function mutateReviewsInEnvelope(
   return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
 }
 
-function removeReviewsInEnvelope(
+function excludeSessionReviewsInEnvelope(
   envelope: DeckProgressEnvelope,
   matches: (review: ReviewRecord) => boolean,
   now: number,
 ): SessionMutation {
-  const next = structuredClone(envelope);
-  let changed = false;
-  const reviewIds: string[] = [];
-
-  for (const mode of Object.values(next.modes)) {
-    let modeChanged = false;
-    for (const progress of Object.values(mode.cards)) {
-      const kept: ReviewRecord[] = [];
-      for (const review of progress.history) {
-        if (matches(review)) {
-          changed = true;
-          modeChanged = true;
-          reviewIds.push(review.id);
-        } else {
-          kept.push(review);
-        }
-      }
-      if (modeChanged) progress.history = kept;
-    }
-    if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
-  }
-
-  // Session deletion removes the historical review records themselves, but leaves
-  // the card/mode aggregates that drive mastery, scheduling, adaptive priority,
-  // response-time memory, and staged unlocking untouched.
-  if (changed) {
-    const deletedIds = [...new Set(reviewIds)];
-    next.pendingDeletedReviewIds = [...new Set([...(next.pendingDeletedReviewIds ?? []), ...deletedIds])];
-    next.updatedAt = Math.max(next.updatedAt, now);
-  }
-  return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
+  const mutation = mutateReviewsInEnvelope(
+    envelope,
+    matches,
+    (review) => {
+      const { sessionId: _sessionId, sessionStartedAt: _sessionStartedAt, sessionName: _sessionName, ...learningReview } = review;
+      return { ...learningReview, statsExcluded: true };
+    },
+    now,
+  );
+  if (!mutation.changed) return mutation;
+  const sessionDeletedReviewIds = [...new Set([...(mutation.envelope.sessionDeletedReviewIds ?? []), ...mutation.reviewIds])];
+  return { ...mutation, envelope: { ...mutation.envelope, sessionDeletedReviewIds } };
 }
 
 export function renameSessionInEnvelope(envelope: DeckProgressEnvelope, sessionId: string, name: string, now = Date.now()): SessionMutation {
@@ -215,22 +196,26 @@ export function renameReviewsInEnvelope(envelope: DeckProgressEnvelope, reviewId
 }
 
 export function deleteSessionFromEnvelope(envelope: DeckProgressEnvelope, sessionId: string, now = Date.now()): SessionMutation {
-  return removeReviewsInEnvelope(
+  const mutation = excludeSessionReviewsInEnvelope(
     envelope,
     (review) => review.sessionId === sessionId && review.activityKind !== "warmup",
     now,
   );
+  if (!mutation.changed) return mutation;
+  const deletedSessionIds = [...new Set([...(mutation.envelope.deletedSessionIds ?? []), sessionId])];
+  return { ...mutation, envelope: { ...mutation.envelope, deletedSessionIds } };
 }
 
 export function deleteReviewsFromEnvelope(envelope: DeckProgressEnvelope, reviewIds: readonly string[], now = Date.now()): SessionMutation {
   const ids = new Set(reviewIds);
-  return removeReviewsInEnvelope(
+  return excludeSessionReviewsInEnvelope(
     envelope,
-    (review) => ids.has(review.id) && review.activityKind !== "warmup",
+    (review) => ids.has(review.id) && review.activityKind !== "warmup" && !review.statsExcluded,
     now,
   );
 }
 
-// Backward-compatible export used by Stats. The behavior is now a true history
-// deletion rather than a hidden/excluded marker.
+// Backward-compatible export used by Stats. Deleting a session now removes its
+// session/Stats identity while preserving the underlying review evidence used by
+// mastery, scheduling, response-time memory, and adaptive learning.
 export const deleteReviewsFromStatsInEnvelope = deleteReviewsFromEnvelope;
