@@ -38,6 +38,7 @@ type Props = {
   onDirectionChange?: (direction: StudyDirection) => void;
   directionLabels?: { forward: string; reverse: string };
   resetKey: string;
+  resumeSession?: SessionMeta | null;
   cardMeta?: (card: StudyCard, source: StudySourceDefinition) => string;
   renderFront?: (card: StudyCard, copy: DirectionalCardCopy, source: StudySourceDefinition) => ReactNode;
   renderBack?: (card: StudyCard, copy: DirectionalCardCopy, source: StudySourceDefinition) => ReactNode;
@@ -71,7 +72,7 @@ function aggregateStats(candidates: Candidate[], states: Map<string, StudyModeSt
   return { available: candidates.length, reviewed, accuracy: totalReviews ? rightReviews / totalReviews : null, everWrong, markedHard, averageResponseTimeMs: responseCount ? responseTotal / responseCount : 0, mastered, totalReviews, bestStreak };
 }
 
-export function MultiSourceStudySession({ deck, sources, direction, onDirectionChange, directionLabels = PropsDefaults, resetKey, cardMeta, renderFront, renderBack, priorityPrompt }: Props) {
+export function MultiSourceStudySession({ deck, sources, direction, onDirectionChange, directionLabels = PropsDefaults, resetKey, resumeSession, cardMeta, renderFront, renderBack, priorityPrompt }: Props) {
   const { user } = useAuth();
   const [envelopes, setEnvelopes] = useState<Record<string, DeckProgressEnvelope>>({});
   const envelopesRef = useRef<Record<string, DeckProgressEnvelope>>({});
@@ -81,9 +82,9 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const [current, setCurrent] = useState<Candidate | null>(null);
   const [revealed, setRevealed] = useState(false), [reviewFront, setReviewFront] = useState(false), [result, setResult] = useState<ReviewResult | null>(null), [difficulty, setDifficulty] = useState<ReviewDifficulty | null>(null);
   const [capturedTimeMs, setCapturedTimeMs] = useState<number | null>(null), [lastTransaction, setLastTransaction] = useState<MixedReviewTransaction | null>(null), [editingTransaction, setEditingTransaction] = useState<MixedReviewTransaction | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(() => resumeSession ? "Continuing the selected past session. Your long-term memory and adaptive priorities are unchanged." : null);
   const [backtracking, setBacktracking] = useState(false), [startGateOpen, setStartGateOpen] = useState(true);
-  const [session, setSession] = useState<SessionMeta>(makeSession);
+  const [session, setSession] = useState<SessionMeta>(() => resumeSession ?? makeSession());
   const [warmup, setWarmup] = useState<WarmupMeta | null>(null);
 
   const deckIdsKey = useMemo(() => [...new Set(sources.map((source) => source.deck.id))].sort().join("|"), [sources]);
@@ -219,7 +220,14 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
   function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!current) return; resetUi(); setStartGateOpen(true); const selected = chooseNext(current, next, Boolean(warmup)); if (selected) present(selected); }
   function skip() { if (!current || editingTransaction) return; const previous = current; resetUi(); const selected = chooseNext(previous, selectionMode, Boolean(warmup)); if (selected) present(selected); }
+  function clearResumeUrl() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("session") && !url.searchParams.has("sessionStartedAt")) return;
+    url.searchParams.delete("session"); url.searchParams.delete("sessionStartedAt");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
   function startNewSession() {
+    clearResumeUrl();
     setWarmup(null); setSession(makeSession()); setLastTransaction(null); resetUi(); setStartGateOpen(true);
     const selected = chooseNext(current);
     if (selected) present(selected);
