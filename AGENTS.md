@@ -1,5 +1,7 @@
 # Greek & Latin Study — permanent repository instructions
 
+The canonical GitHub repository is `coltonkirby01/greeklatinstudy`; its GitHub Pages base path is `/greeklatinstudy/` unless a custom domain is configured.
+
 Treat the repository root as authoritative. Do not edit the retired `greek-latin-study-github/` implementation if it appears in old commits.
 
 ## Core rule
