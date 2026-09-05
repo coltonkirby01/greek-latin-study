@@ -1,9 +1,10 @@
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { loadLatinDeck } from "../data/builtin-decks";
 import { useAuth } from "../features/auth/auth-context";
 import { HenleChartTable } from "../features/henle/henle-chart";
 import { loadHenle, type HenleChart } from "../features/henle/henle-data";
+import { loadLatinFilterPreferences, saveLatinFilterPreferences } from "../features/study/filter-preferences";
 import { HENLE_PART1_SECTIONS, matchesGrammarCard, matchesVocabularyCard, vocabularyFamily, type GrammarCardFilters, type OptionalSelection } from "../features/study/latin-study-filters";
 import { MultiSourceStudySession, type StudySourceDefinition } from "../features/study/multi-source-study-session";
 import { FilterCheckbox, FilterDisclosure, FilterSection, StudyFilterMenu } from "../features/study/study-filter-menu";
@@ -19,6 +20,14 @@ const verbFormGroups = ["Indicative", "Subjunctive", "Imperative", "Infinitive",
 
 function blankGrammarSelections(): GrammarSelections { return { sections: null, verbSubsections: null, voices: null, formGroups: null }; }
 function emptyGrammarSelections(): GrammarSelections { return { sections: new Set(), verbSubsections: null, voices: null, formGroups: null }; }
+function cloneGrammarSelections(filters: GrammarSelections): GrammarSelections {
+  return {
+    sections: filters.sections === null ? null : new Set(filters.sections),
+    verbSubsections: filters.verbSubsections === null ? null : new Set(filters.verbSubsections),
+    voices: filters.voices === null ? null : new Set(filters.voices),
+    formGroups: filters.formGroups === null ? null : new Set(filters.formGroups),
+  };
+}
 
 function setValues(current: OptionalSelection, allValues: readonly string[], values: readonly string[], checked: boolean): OptionalSelection {
   const next = current === null ? new Set(allValues) : new Set(current);
@@ -135,19 +144,29 @@ export function LatinPage() {
   const { value: vocabularyDeck, error: vocabularyError } = useAsync(loadLatinDeck, []);
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
+  const [initialFilters] = useState(loadLatinFilterPreferences);
   const [direction, setDirection] = useState<StudyDirection>("forward");
-  const [materials, setMaterials] = useState<Set<Material>>(() => new Set(["vocabulary"]));
+  const [materials, setMaterials] = useState<Set<Material>>(() => new Set(initialFilters.materials));
   const [grammarRequested, setGrammarRequested] = useState(false);
   const needsGrammar = grammarRequested || materials.has("grammar-forms") || materials.has("grammar-charts");
   const { value: henle, error: henleError, loading: henleLoading } = useAsync(async () => needsGrammar ? loadHenle() : null, [needsGrammar]);
 
-  const [vocabularyParts, setVocabularyParts] = useState<OptionalSelection>(null);
-  const [formFilters, setFormFilters] = useState<GrammarSelections>(blankGrammarSelections);
-  const [chartFilters, setChartFilters] = useState<GrammarSelections>(blankGrammarSelections);
+  const [vocabularyParts, setVocabularyParts] = useState<OptionalSelection>(() => initialFilters.vocabularyParts === null ? null : new Set(initialFilters.vocabularyParts));
+  const [formFilters, setFormFilters] = useState<GrammarSelections>(() => cloneGrammarSelections(initialFilters.formFilters));
+  const [chartFilters, setChartFilters] = useState<GrammarSelections>(() => cloneGrammarSelections(initialFilters.chartFilters));
   const resumeSession = useMemo(() => {
     const id = searchParams.get("session"), startedAt = Number(searchParams.get("sessionStartedAt"));
     return id && Number.isFinite(startedAt) && startedAt > 0 ? { id, startedAt } : null;
   }, [searchParams]);
+
+  useEffect(() => {
+    saveLatinFilterPreferences({
+      materials: new Set(materials),
+      vocabularyParts: vocabularyParts === null ? null : new Set(vocabularyParts),
+      formFilters: cloneGrammarSelections(formFilters),
+      chartFilters: cloneGrammarSelections(chartFilters),
+    });
+  }, [chartFilters, formFilters, materials, vocabularyParts]);
 
   const vocabularyGroups = useMemo(() => {
     const groups = new Map<string, Array<{ value: string; count: number }>>();
@@ -225,13 +244,13 @@ export function LatinPage() {
       </FilterDisclosure>
     </StudyFilterMenu>
 
-    {vocabularyDeck ? <MultiSourceStudySession deck={virtualDeck} sources={sources} resetKey={resetKey} direction={direction} onDirectionChange={hasDirectionalCards ? setDirection : undefined} directionLabels={{ forward: "Forward", reverse: "Reverse" }} resumeSession={resumeSession} cardMeta={(card, source) => source.id === "vocabulary" ? `Entry ${Number(card.metadata?.deckPosition ?? 0)} of ${vocabularyDeck.cards.length} · Dickinson rank ${card.rank}` : `Rule ${card.rank}`} priorityPrompt={(card, copy) => String(card.metadata?.studySource) === "grammar-chart" ? `${card.front} · Complete chart` : copy.prompt} renderFront={(card, copy, source) => {
+    {vocabularyDeck ? <MultiSourceStudySession deck={virtualDeck} sources={sources} resetKey={resetKey} direction={direction} onDirectionChange={hasDirectionalCards ? setDirection : undefined} directionLabels={{ forward: "Forward", reverse: "Reverse" }} resumeSession={resumeSession} cardMeta={(card, source) => source.id === "vocabulary" ? `Entry ${Number(card.metadata?.deckPosition ?? 0)} of ${vocabularyDeck.cards.length} · Dickinson rank ${card.rank}` : `Rule ${Number(card.metadata?.rule ?? card.rank)}`} priorityPrompt={(card, copy) => String(card.metadata?.studySource) === "grammar-chart" ? `${card.front} · Complete chart` : copy.prompt} renderFront={(card, copy, source) => {
       if (source.id === "grammar-charts") { const chart = card.metadata?.chart as HenleChart; return <span className="henle-chart-face"><strong className="henle-card-title">{chart.title}</strong><span className="chart-instruction">Reconstruct the complete chart from memory.</span><HenleChartTable items={chart.items} revealed={false} /></span>; }
       if (source.id === "grammar-forms") return source.direction === "forward" ? <span className="henle-card-copy"><strong className="henle-card-title">{String(card.metadata?.title ?? "")}</strong><span className="henle-prompt">{String(card.metadata?.prompt ?? copy.prompt)}</span></span> : <span className="henle-prompt henle-form-prompt">{copy.prompt}</span>;
       return <span className={direction === "forward" ? "latin-front" : "study-prompt reverse-text-prompt"}>{copy.prompt}</span>;
     }} renderBack={(card, copy, source) => {
-      if (source.id === "grammar-charts") { const chart = card.metadata?.chart as HenleChart; return <span className="henle-chart-face"><strong className="henle-card-title">{chart.title}</strong><HenleChartTable items={chart.items} revealed /></span>; }
-      if (source.id === "grammar-forms") return <span className="answer-block henle-answer-block"><strong className="henle-answer">{copy.answer}</strong><span className="answer-notes">Rule {card.rank}</span></span>;
+      if (source.id === "grammar-charts") { const chart = card.metadata?.chart as HenleChart; return <span className="henle-chart-face"><strong className="henle-card-title">{chart.title}</strong><span className="answer-notes">Rule {Number(card.metadata?.rule ?? chart.rule)}</span><HenleChartTable items={chart.items} revealed /></span>; }
+      if (source.id === "grammar-forms") return <span className="answer-block henle-answer-block"><strong className="henle-answer">{copy.answer}</strong><span className="answer-notes">Rule {Number(card.metadata?.rule ?? card.rank)}</span></span>;
       return <span className="answer-block"><strong className={direction === "reverse" ? "latin-front compact-latin" : "study-answer"}>{copy.answer}</strong>{card.notes && <span className="answer-notes">{card.notes}</span>}</span>;
     }} /> : <div className="study-loading panel-surface"><span className="loading-mark">A</span><p>Preparing Latin…</p></div>}
   </main>;
