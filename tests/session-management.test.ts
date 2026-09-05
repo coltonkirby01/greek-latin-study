@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEnvelope, createModeState, presentCard, recordReview } from "../src/features/study/engine";
+import { mergeProgressEnvelopes } from "../src/features/study/progress-repository";
 import { automaticManagedSessionName, collectManagedSessions, deleteReviewsFromEnvelope, deleteSessionFromEnvelope, displayManagedSessionName, renameReviewsInEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
 import type { StudyCard } from "../src/features/study/types";
 
@@ -117,5 +118,20 @@ describe("session management", () => {
     expect(mode.totalReviews).toBe(beforeMode.totalReviews);
     expect(mode.reviewSequence).toEqual(beforeMode.reviewSequence);
     expect(mode.unlockedCount).toBe(150);
+  });
+
+  it("does not resurrect a deleted session when a newer stale copy wins a mode merge", () => {
+    const stale = envelopeWithTwoSessions();
+    stale.modes.forward.updatedAt = 200;
+    stale.updatedAt = 200;
+
+    const deleted = deleteSessionFromEnvelope(envelopeWithTwoSessions(), "session-b", 100).envelope;
+    deleted.deletedReviewIds = ["r2"];
+    delete deleted.pendingDeletedReviewIds;
+
+    const merged = mergeProgressEnvelopes(stale, deleted);
+    expect(merged?.modes.forward.cards.one.history.map((review) => review.id)).toEqual(["r1"]);
+    expect(merged?.deletedReviewIds).toContain("r2");
+    expect(collectManagedSessions({ "dickinson-latin-core": merged ?? null }).map((session) => session.id)).toEqual(["session-a"]);
   });
 });
