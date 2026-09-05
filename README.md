@@ -112,10 +112,10 @@ Every saved review keeps a transaction containing the exact pre-review mode snap
 
 ## Supabase setup
 
-The production project already has both repository migrations applied. For a fresh replacement project:
+The production project already has all repository migrations applied. For a fresh replacement project:
 
 1. Create a Supabase project; do not enable a paid plan unless you have deliberately approved it.
-2. Apply `supabase/migrations/0001_initial_schema.sql`, followed by `0002_harden_admin_authorization.sql`.
+2. Apply the numbered files in `supabase/migrations/` in order. Migration 0002 hardens administrator authorization; migration 0003 optimizes RLS evaluation without changing access.
 3. In Authentication, enable Email. Set the Site URL to the deployed GitHub Pages URL and add both the deployed `/account` URL and local development URL to Redirect URLs.
 4. Create your account once, copy its UUID from Authentication → Users, and insert that exact UUID into `public.admin_users`.
 5. Replace the public values in `.env.production`, or provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` through the deployment environment. Use the project URL and public publishable key only.
@@ -130,7 +130,7 @@ The migration creates:
 - private `reading-audio` Storage with a 50 MB object limit
 - `admin_users` with self-visible membership checks used directly by administrator-only RLS policies
 
-Every private row policy compares `user_id` to `auth.uid()`. Deck/card writes additionally require a matching self-visible row in `admin_users`. The administrator page refusing access is only a usability layer; RLS remains authoritative if someone manually calls an endpoint or visits `/admin`. Supabase's security advisor reports no findings after the hardening migration.
+Every private row policy compares `user_id` to `(select auth.uid())`, allowing Postgres to initialize the identity once per query. Deck/card writes additionally require a matching self-visible row in `admin_users`. The administrator page refusing access is only a usability layer; RLS remains authoritative if someone manually calls an endpoint or visits `/admin`. Supabase's security advisor reports no findings, and its performance advisor reports no actionable RLS warnings after the hardening migrations.
 
 ### Email/password, reset, and Google
 
@@ -173,7 +173,7 @@ The Edge Function remains inactive until an owner-approved provider is selected.
 
 The `pages.yml` workflow runs tests and a production build for every pull request. A push to `main` additionally uploads `dist` and deploys GitHub Pages. `build:pages` sets the correct `/greek-latin-study/` base path, and the post-build script creates `404.html` so direct client routes work on Pages.
 
-The repository originally used legacy branch publishing. Until the owner changes **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, the deploy job waits for that legacy job to finish before publishing the compiled artifact. This prevents raw Vite source from replacing the production build. Once the source is set to GitHub Actions, the same workflow continues normally and the wait exits immediately.
+The repository originally used legacy branch publishing. Until the owner changes **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, that publisher can cancel a concurrent custom build. The workflow therefore also runs after the legacy publisher completes, then replaces its output with the compiled artifact. This prevents raw Vite source from remaining in production. Once the source is set to GitHub Actions, ordinary push deployments continue normally and the legacy completion trigger simply stops firing.
 
 Recommended branch practice:
 
