@@ -404,15 +404,10 @@
 }
 
 .stats-recent-section {
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
   display: grid;
   gap: 1rem;
   border-top: 3px solid var(--burgundy);
-}
-
-.stats-recent-section .stats-section-heading {
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--line);
 }
 
 .stats-recent-row {
