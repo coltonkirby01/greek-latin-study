@@ -23,14 +23,33 @@ export function priorityScore(card: StudyCard, state: StudyModeState, options: {
   if (item.reviews) { score += (item.wrong / item.reviews) * 36 + Math.min(18, item.lapses * 2.7); score += item.lastDifficulty === "hard" ? 20 : item.lastDifficulty === "medium" ? 7 : 1; score += (1 - Math.min(1, item.strength)) * 13; score += responseTimePriorityScore(item.lastResponseTimeMs, item.responseTimeTotalMs, item.responseTimeCount); }
   const interval = Math.max(MINUTE, item.intervalMs || MINUTE);
   score += !item.dueAt || item.dueAt <= now ? 13 + Math.min(42, ((now - (item.dueAt || now)) / interval) * 8) : Math.max(0, 4 - ((item.dueAt - now) / interval) * 4);
-  if (!options.ignoreRecency) { const fromEnd = state.reviewSequence.slice().reverse().indexOf(card.id); if (fromEnd === 0) score -= 120; else if (fromEnd === 1) score -= 32; else if (fromEnd === 2) score -= 10; }
+  if (!options.ignoreRecency) {
+    const fromEnd = state.reviewSequence.slice().reverse().indexOf(card.id);
+    const penalties = [120, 90, 60, 36, 20, 10];
+    if (fromEnd >= 0 && fromEnd < penalties.length) score -= penalties[fromEnd];
+  }
   return score;
+}
+
+function avoidRecentAdaptiveCards(cards: StudyCard[], state: StudyModeState) {
+  if (cards.length <= 3) return cards;
+  const recentLimit = Math.min(4, cards.length - 3);
+  const recent: string[] = [];
+  for (const id of [...state.reviewSequence].reverse()) {
+    if (!recent.includes(id)) recent.push(id);
+    if (recent.length >= recentLimit) break;
+  }
+  if (!recent.length) return cards;
+  const recentIds = new Set(recent);
+  const filtered = cards.filter((card) => !recentIds.has(card.id));
+  return filtered.length >= 3 ? filtered : cards;
 }
 
 export function pickNextCard(cards: StudyCard[], state: StudyModeState, selectionMode: SelectionMode, options: { excludeCardId?: string; random?: () => number; staged?: StagedIntroduction } = {}) {
   let available = cardsAvailableToState(cards, state); if (!available.length) return null;
   if (available.length > 1 && options.excludeCardId) available = available.filter((card) => card.id !== options.excludeCardId);
   if (selectionMode === "sequential") { const index = available.findIndex((card) => card.id === state.currentCardId); return available[(index + 1 + available.length) % available.length]; }
+  available = avoidRecentAdaptiveCards(available, state);
   const ranked = available.map((card) => ({ card, score: priorityScore(card, state, { staged: options.staged }) })).sort((a, b) => b.score - a.score).slice(0, Math.min(24, available.length));
   const max = ranked[0].score, weights = ranked.map(({ score }) => Math.exp((score - max) / 11)); let chance = (options.random ?? Math.random)() * weights.reduce((sum, weight) => sum + weight, 0);
   for (let index = 0; index < ranked.length; index += 1) { chance -= weights[index]; if (chance <= 0) return ranked[index].card; }
