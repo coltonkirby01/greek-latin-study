@@ -8,6 +8,8 @@ export type ManagedSession = {
   lastReviewedAt: number;
   reviews: number;
   name?: string;
+  inferred?: boolean;
+  reviewIds?: string[];
 };
 
 export type SessionMutation = {
@@ -15,6 +17,21 @@ export type SessionMutation = {
   changed: boolean;
   reviewIds: string[];
 };
+
+type SessionReview = {
+  language: "Greek" | "Latin";
+  source: string;
+  review: ReviewRecord;
+};
+
+const SESSION_DECKS = {
+  Greek: ["greek-i", "alpha-omega-lesson3-vocab", "alpha-omega-lesson3-grammar"],
+  Latin: ["dickinson-latin-core", "henle-part1-forms"],
+} as const;
+
+export function sessionDeckIdsForLanguage(language: "Greek" | "Latin") {
+  return [...SESSION_DECKS[language]];
+}
 
 function deckLanguage(deckId: string): "Greek" | "Latin" {
   return deckId.startsWith("greek-") || deckId.startsWith("alpha-omega-") ? "Greek" : "Latin";
@@ -39,9 +56,26 @@ export function sessionCustomNameFromReviews(reviews: Array<Pick<ReviewRecord, "
   return latest?.name;
 }
 
+function summarizeManagedSession(id: string, language: "Greek" | "Latin", entries: SessionReview[], inferred: boolean): ManagedSession {
+  const chronological = [...entries].sort((a, b) => a.review.reviewedAt - b.review.reviewedAt);
+  const sources: string[] = [];
+  for (const entry of chronological) if (!sources.includes(entry.source)) sources.push(entry.source);
+  const reviews = chronological.map((entry) => entry.review);
+  return {
+    id,
+    language,
+    sources,
+    startedAt: Math.min(...reviews.map((review) => review.sessionStartedAt ?? review.reviewedAt)),
+    lastReviewedAt: Math.max(...reviews.map((review) => review.reviewedAt)),
+    reviews: reviews.length,
+    name: sessionCustomNameFromReviews(reviews),
+    inferred,
+    reviewIds: reviews.map((review) => review.id),
+  };
+}
+
 export function collectManagedSessions(envelopes: Record<string, DeckProgressEnvelope | null>) {
-  const sessions = new Map<string, ManagedSession>();
-  const namedReviews = new Map<string, Array<Pick<ReviewRecord, "sessionName" | "reviewedAt">>>();
+  const allReviews: SessionReview[] = [];
   for (const [deckId, envelope] of Object.entries(envelopes)) {
     if (!envelope) continue;
     const language = deckLanguage(deckId);
@@ -49,36 +83,41 @@ export function collectManagedSessions(envelopes: Record<string, DeckProgressEnv
       const source = sourceLabel(deckId, studyKey);
       for (const progress of Object.values(mode.cards)) {
         for (const review of progress.history) {
-          if (!review.sessionId || review.activityKind === "warmup" || review.statsExcluded) continue;
-          const startedAt = review.sessionStartedAt ?? review.reviewedAt;
-          const existing = sessions.get(review.sessionId);
-          if (existing) {
-            existing.startedAt = Math.min(existing.startedAt, startedAt);
-            existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
-            existing.reviews += 1;
-            if (!existing.sources.includes(source)) existing.sources.push(source);
-          } else {
-            sessions.set(review.sessionId, {
-              id: review.sessionId,
-              language,
-              sources: [source],
-              startedAt,
-              lastReviewedAt: review.reviewedAt,
-              reviews: 1,
-            });
-          }
-          if (review.sessionName?.trim()) {
-            namedReviews.set(review.sessionId, [...(namedReviews.get(review.sessionId) ?? []), review]);
-          }
+          if (review.activityKind === "warmup" || review.statsExcluded) continue;
+          allReviews.push({ language, source, review });
         }
       }
     }
   }
-  for (const [sessionId, reviews] of namedReviews) {
-    const session = sessions.get(sessionId);
-    if (session) session.name = sessionCustomNameFromReviews(reviews);
+
+  const sessions: ManagedSession[] = [];
+  for (const language of ["Greek", "Latin"] as const) {
+    const languageReviews = allReviews.filter((entry) => entry.language === language).sort((a, b) => a.review.reviewedAt - b.review.reviewedAt);
+    const explicit = new Map<string, SessionReview[]>();
+    const legacy: SessionReview[] = [];
+    for (const entry of languageReviews) {
+      if (entry.review.sessionId) explicit.set(entry.review.sessionId, [...(explicit.get(entry.review.sessionId) ?? []), entry]);
+      else legacy.push(entry);
+    }
+
+    for (const [id, entries] of explicit) sessions.push(summarizeManagedSession(id, language, entries, false));
+
+    let inferredIndex = 0;
+    let bucket: SessionReview[] = [];
+    const closeBucket = () => {
+      if (!bucket.length) return;
+      sessions.push(summarizeManagedSession(`legacy-${language}-${inferredIndex++}`, language, bucket, true));
+      bucket = [];
+    };
+    for (const entry of legacy) {
+      const previous = bucket.at(-1)?.review;
+      if (previous && entry.review.reviewedAt - previous.reviewedAt > 30 * 60_000) closeBucket();
+      bucket.push(entry);
+    }
+    closeBucket();
   }
-  return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt);
+
+  return sessions.sort((a, b) => b.startedAt - a.startedAt || b.lastReviewedAt - a.lastReviewedAt);
 }
 
 export function automaticManagedSessionName(session: ManagedSession, formatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })) {
