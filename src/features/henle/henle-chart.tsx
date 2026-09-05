@@ -8,16 +8,52 @@ const people = ["First", "Second", "Third"];
 type AnswerKind = "Stem" | "Ending" | null;
 function answerKind(item: HenleSourceCard | undefined): AnswerKind {
   if (!item) return null;
-  const markers = `${item.verb_form_group ?? ""} ${item.tags.join(" ")}`.toLowerCase();
+  const markers = `${item.verb_form_group ?? ""} ${item.tags.join(" ")} ${item.prompt}`.toLowerCase();
   if (markers.includes("stem")) return "Stem";
   if (markers.includes("ending")) return "Ending";
   return null;
 }
+
+const badgeStyle = (kind: "Stem" | "Ending" | "Complete form") => ({
+  display: "inline-flex",
+  alignItems: "center",
+  border: "1px solid var(--line)",
+  borderRadius: "999px",
+  padding: "0.16rem 0.42rem",
+  fontSize: "0.68em",
+  fontWeight: 800,
+  letterSpacing: "0.065em",
+  textTransform: "uppercase" as const,
+  whiteSpace: "nowrap" as const,
+  background: kind === "Complete form" ? "var(--surface)" : "var(--surface-raised, var(--surface))",
+});
+
+function componentBadge(kind: "Stem" | "Ending" | "Complete form") {
+  return <span className={`henle-answer-kind ${kind.toLowerCase().replace(" ", "-")}`} style={badgeStyle(kind)}>{kind}</span>;
+}
+
 function answer(item: HenleSourceCard | undefined, revealed: boolean) {
   if (!revealed) return <span className="chart-blank" aria-label="blank answer" />;
   const kind = answerKind(item);
-  if (!kind) return <span className="revealed-form">{item?.answer || "—"}</span>;
-  return <span className="revealed-form" style={{ display: "inline-flex", alignItems: "baseline", gap: "0.45rem", padding: "0.2rem 0.4rem", border: "1px solid var(--line)", borderRadius: "6px", background: "var(--surface)" }}><strong style={{ fontSize: "0.72em", letterSpacing: "0.055em", textTransform: "uppercase" }}>{kind}:</strong><span>{item?.answer || "—"}</span></span>;
+  return <span className="revealed-form" style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: "0.42rem" }}>
+    {componentBadge(kind ?? "Complete form")}
+    <strong>{item?.answer || "—"}</strong>
+  </span>;
+}
+
+function ComponentGuide({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
+  if (!revealed) return null;
+  const stems = [...new Set(items.filter((item) => answerKind(item) === "Stem").map((item) => item.answer))];
+  const endings = [...new Set(items.filter((item) => answerKind(item) === "Ending").map((item) => item.answer))];
+  const hasComponents = stems.length > 0 || endings.length > 0;
+  return <div className="henle-component-guide" style={{ display: "grid", gap: "0.45rem", margin: "0.2rem 0 0.8rem", padding: "0.7rem 0.8rem", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--surface)" }}>
+    <strong style={{ fontSize: "0.78rem", letterSpacing: "0.055em", textTransform: "uppercase" }}>How to read this answer</strong>
+    {hasComponents ? <>
+      {stems.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Stem")}<span><strong>Stem portion:</strong> {stems.join(", ")}</span></div>}
+      {endings.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Ending")}<span><strong>Ending portion:</strong> {endings.join(", ")}</span></div>}
+      <span style={{ fontSize: "0.84rem" }}>Rows marked <strong>Complete form</strong> show the combined form; stem and ending rows are identified separately rather than being presented as interchangeable full forms.</span>
+    </> : <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Complete form")}<span>This rule supplies completed forms rather than a separate stem or ending table. The answer is therefore labeled as a complete form, not as a stem or ending.</span></div>}
+  </div>;
 }
 
 function Declension({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
@@ -42,7 +78,7 @@ function PrincipalParts({ items, revealed }: { items: HenleSourceCard[]; reveale
 
 function Generic({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
   const kinds = [...new Set(items.map(answerKind).filter(Boolean))] as Exclude<AnswerKind, null>[];
-  const heading = kinds.length === 1 ? `${kinds[0]} answers` : kinds.length > 1 ? "Stem / Ending" : "Form";
+  const heading = kinds.length === 1 ? `${kinds[0]} answers` : kinds.length > 1 ? "Stem / Ending" : "Completed form";
   return <div className="chart-scroll"><table className="henle-chart"><thead><tr><th>Prompt</th><th>{heading}</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><th>{item.prompt}</th><td>{answer(item, revealed)}</td></tr>)}</tbody></table></div>;
 }
 
@@ -51,9 +87,6 @@ export function HenleChartTable({ items, revealed }: { items: HenleSourceCard[];
   const caseNumber = items.every((item) => /^(Nominative|Genitive|Dative|Accusative|Ablative|Vocative) (Singular|Plural)$/.test(item.prompt));
   const person = items.every((item) => /^(First|Second|Third) Person (Singular|Plural)$/.test(item.prompt));
   const principal = items.every((item) => /^(First|Second|Third|Fourth) Conjugation — (.+)$/.test(item.prompt));
-  if (declension) return <Declension {...{ items, revealed }} />;
-  if (caseNumber) return <Matrix {...{ items, revealed }} kind="case" />;
-  if (person) return <Matrix {...{ items, revealed }} kind="person" />;
-  if (principal) return <PrincipalParts {...{ items, revealed }} />;
-  return <Generic {...{ items, revealed }} />;
+  const table = declension ? <Declension {...{ items, revealed }} /> : caseNumber ? <Matrix {...{ items, revealed }} kind="case" /> : person ? <Matrix {...{ items, revealed }} kind="person" /> : principal ? <PrincipalParts {...{ items, revealed }} /> : <Generic {...{ items, revealed }} />;
+  return <><ComponentGuide {...{ items, revealed }} />{table}</>;
 }
