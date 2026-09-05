@@ -28,9 +28,9 @@ export function HomePage() {
   </main>;
 }
 
-function Course({ visual, eyebrow, title, description, href, linkLabel }: { visual: ReactNode; count: string; eyebrow: string; title: string; description: string; href: string; linkLabel: string }) {
+function Course({ visual, count, eyebrow, title, description, href, linkLabel }: { visual: ReactNode; count: string; eyebrow: string; title: string; description: string; href: string; linkLabel: string }) {
   return <article className="course-card">
-    <div className="course-card-top">{visual}</div>
+    <div className="course-card-top">{visual}{count && <span className="course-count">{count}</span>}</div>
     <p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p>
     <Link className="course-link" to={href}>{linkLabel} <ArrowRight /></Link>
   </article>;
