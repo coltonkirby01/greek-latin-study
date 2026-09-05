@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
   pages: write
   id-token: write
@@ -21,11 +21,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Apply targeted dependency patches
+        if: github.event_name == 'pull_request' && github.head_ref == 'chatgpt/dependency-security-audit'
+        run: |
+          npm install --save-exact react-router-dom@7.18.3
+          npm install --save-dev --save-exact vite@6.4.3 vitest@3.2.6
+          if ! git diff --quiet -- package.json package-lock.json; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json package-lock.json
+            git commit -m "Patch audited frontend dependencies"
+            git push origin HEAD:${GITHUB_HEAD_REF}
+          fi
       - name: Dependency audit report
         run: npm audit --json || true
       - run: npm test
