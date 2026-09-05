@@ -65,7 +65,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 - A new study session is a performance window layered on top of continuous long-term mastery. Starting a new session must never reset mastery, due dates, intervals, response-time history, or adaptive priorities.
 - Reviews belonging to a normal session carry a stable session ID/start time so sessions can be compared in Stats.
-- Normal sessions may also carry a persistent custom session name. Renaming a session changes only its display identity; it must not change its session ID, review membership, mastery, scheduling, ranking data, or long-term memory.
+- Normal sessions may also carry a persistent custom session name. Renaming a session changes only its display identity; it must not change its session ID, review membership, mastery, scheduling, ranking data, or long-term memory. Everywhere a custom name exists, show only that custom name; do not append the old automatic/timestamped name.
 - Sessions without custom names receive useful automatic names based on language, source/focus, and date/time rather than opaque IDs or purely generic labels.
 - Users can deliberately continue a past ranked session. Continuing reuses that session's original ID, start time, and custom name when present, while card selection still uses the user's current long-term mastery, due state, speed, accuracy, and adaptive priorities.
 - Both Greek and Latin study toolbars expose one compact Session dropdown in the control position previously used by the standalone New session button. That menu lets the user keep the current session, start a new session, or select a resumable past session.
@@ -132,7 +132,9 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Stats retain Forward/Reverse separation and include Henle Whole Charts as their own study mode.
 - Stats rank explicit study sessions. Legacy history without explicit session IDs may be grouped into inferred sessions without altering stored data.
 - The Stats page provides a multi-select session scope. Users can view all sessions, one session, or any selected combination; the proficiency summaries, card analysis, recent reviews, and trend views must follow the selected scope.
-- Session rows expose clear names, Rename actions, and Continue actions for explicit resumable sessions. Custom session names persist with review history and survive reload/login synchronization.
+- Session management belongs directly inside Stats > Choose sessions; do not add a separate session-management card/panel. Double-click an explicit session name there for Finder/Explorer-style inline renaming, and keep Delete in the same row.
+- Deleting a session removes it from Stats/session history only. Its reviews remain part of continuous study memory and MUST NOT change card mastery, strength, intervals, due dates, adaptive priority inputs, response-time memory, review sequence, or Dickinson unlock progress. The visible Stats/proficiency calculations should be recomputed from the sessions that remain.
+- Explicit resumable sessions retain Continue actions in the session rankings. Custom session names persist with review history and survive reload/login synchronization.
 - Stats include lightweight trend graphs for session score and active recall time over time. Avoid large charting dependencies when simple native/SVG rendering is sufficient.
 - Intrinsic card difficulty is separate from the user's Easy/Medium/Hard rating.
 - Greek intrinsic difficulty rises with lesson progression; grammar may add complexity. Later lessons should generally be worth more than earlier lessons.
