@@ -8,14 +8,17 @@ type Priority = Array<{ card: StudyCard; progress: CardProgress; score: number }
 
 function percent(value: number | null) { return value === null ? "—" : `${(value * 100).toFixed(value >= 0.995 ? 0 : 1)}%`; }
 
-export function StudyStartGate({ onStart }: { onStart: () => void }) {
-  return <div className="study-start-gate" role="dialog" aria-modal="true" aria-label="Start flashcard timing">
+export function StudyStartGate({ onStart, onWarmup }: { onStart: () => void; onWarmup?: () => void }) {
+  return <div className="study-start-gate" role="region" aria-label="Start flashcard timing">
     <div className="study-start-card">
       <p className="eyebrow">Timer paused</p>
       <h2>Ready?</h2>
-      <p>The flashcard timer will begin only when you start.</p>
-      <button type="button" className="primary-button study-start-button" onClick={onStart}>Start</button>
-      <span>or press any key to begin</span>
+      <p>Choose direction or card order above while paused, then begin when ready.</p>
+      <div className="study-start-actions">
+        <button type="button" className="primary-button study-start-button" onClick={onStart}>Start</button>
+        {onWarmup && <button type="button" className="small-outline-button study-warmup-button" onClick={onWarmup}>Personalized warm-up · 5 cards</button>}
+      </div>
+      <span>or press any key outside the study controls to begin</span>
     </div>
   </div>;
 }
