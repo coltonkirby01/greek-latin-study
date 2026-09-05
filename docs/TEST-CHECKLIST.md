@@ -45,15 +45,18 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ JSON array imports parse.
 - ✅ XLSX parser and preview path build successfully.
 - ✅ Create/edit metadata, category, card editing/deletion/reordering, publish/unpublish UI builds.
-- ✅ SQL RLS restricts writes to `is_admin()` and rejects ordinary-user access by policy inspection.
-- 🟡 Create/upload/preview/publish/open/study/delete-sample integration test requires the Supabase project.
+- ✅ SQL RLS restricts writes to authenticated `admin_users` members and rejects ordinary-user access by policy inspection.
+- ✅ Production Supabase schema and private `reading-audio` bucket created.
+- ✅ Administrator authorization hardened to self-visible membership rows; Supabase security advisor reports no findings.
+- 🟡 Create/upload/preview/publish/open/study/delete-sample integration test requires the owner's first authenticated administrator account.
 
 ## Accounts and cloud
 
 - ✅ Email/password, signup, logout, password-reset, and Google OAuth code builds.
 - ✅ Local-first sparse progress and per-mode cloud merge are covered by tests.
 - ✅ Admin protection exists in both UI and RLS.
-- 🟡 Account creation, email delivery, session persistence, cross-session/device sync, and password reset require the Supabase project.
+- ✅ Production frontend is connected with the project's modern browser-safe publishable key.
+- 🟡 Account creation, email delivery, session persistence, cross-session/device sync, and password reset require the owner's first account and live verification.
 - 🟡 Google login requires owner-provided Google OAuth configuration.
 
 ## Reading & Audio

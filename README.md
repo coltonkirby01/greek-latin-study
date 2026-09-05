@@ -23,7 +23,7 @@ The Henle JSON is generated from the exact supplied `Henle_Part1_Forms_Full_App.
 - Vitest for review logic, import parsing, reading synchronization, and source-count protection
 - GitHub Actions for test, build, and Pages deployment
 
-The app is intentionally usable without Supabase: all built-in decks and guest progress work locally. Account, cloud deck, administrator, and durable audio-upload features activate when the public Supabase environment values are supplied.
+The app remains usable without Supabase: all built-in decks and guest progress work locally. The production deployment is connected to the owner's **Latin Greek** Supabase project for accounts, cloud progress, administrator-created decks, saved readings, and private audio storage.
 
 ## Project map
 
@@ -53,14 +53,14 @@ npm install
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` only when a Supabase project is available:
+Copy `.env.example` to `.env.local` when using another Supabase project locally:
 
 ```text
 VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 VITE_SUPABASE_ANON_KEY=YOUR_PUBLIC_ANON_KEY
 ```
 
-The anon key is designed for browser use; authorization still comes from RLS. Never put a service-role key or a TTS provider secret in any `VITE_` variable.
+The repository's `.env.production` contains only the project URL and a modern Supabase **publishable** key. Publishable keys are designed for browser exposure; authorization still comes from RLS. Never put a secret key, service-role key, or TTS provider credential in any `VITE_` variable or committed file. CI environment variables can override this file when moving the deployment to another project.
 
 Run all automated checks:
 
@@ -112,11 +112,13 @@ Every saved review keeps a transaction containing the exact pre-review mode snap
 
 ## Supabase setup
 
+The production project already has both repository migrations applied. For a fresh replacement project:
+
 1. Create a Supabase project; do not enable a paid plan unless you have deliberately approved it.
-2. Open SQL Editor and run `supabase/migrations/0001_initial_schema.sql`.
+2. Apply `supabase/migrations/0001_initial_schema.sql`, followed by `0002_harden_admin_authorization.sql`.
 3. In Authentication, enable Email. Set the Site URL to the deployed GitHub Pages URL and add both the deployed `/account` URL and local development URL to Redirect URLs.
-4. Create your account once, copy its UUID from Authentication → Users, and run the single documented `insert into public.admin_users ...` statement at the end of the migration.
-5. Set `VITE_SUPABASE_URL` as a GitHub Actions repository variable and `VITE_SUPABASE_ANON_KEY` as a repository secret. Use the project URL and public anon/publishable key only.
+4. Create your account once, copy its UUID from Authentication → Users, and insert that exact UUID into `public.admin_users`.
+5. Replace the public values in `.env.production`, or provide `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` through the deployment environment. Use the project URL and public publishable key only.
 6. Add the same values to `.env.local` for local development.
 
 The migration creates:
@@ -126,9 +128,9 @@ The migration creates:
 - `review_events` for individual review audit/sync records
 - `readings` for private passage metadata and timing arrays
 - private `reading-audio` Storage with a 50 MB object limit
-- `admin_users` and a security-definer `is_admin()` check
+- `admin_users` with self-visible membership checks used directly by administrator-only RLS policies
 
-Every private row policy compares `user_id` to `auth.uid()`. Deck/card writes additionally call `is_admin()`. The administrator page refusing access is only a usability layer; RLS remains authoritative if someone manually calls an endpoint or visits `/admin`.
+Every private row policy compares `user_id` to `auth.uid()`. Deck/card writes additionally require a matching self-visible row in `admin_users`. The administrator page refusing access is only a usability layer; RLS remains authoritative if someone manually calls an endpoint or visits `/admin`. Supabase's security advisor reports no findings after the hardening migration.
 
 ### Email/password, reset, and Google
 

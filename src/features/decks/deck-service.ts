@@ -1,8 +1,9 @@
 import { supabase } from "../../lib/supabase";
+import type { Json } from "../../lib/database.types";
 import type { DeckDefinition, StudyCard } from "../study/types";
 
 export type CloudDeck = { id: string; slug: string; title: string; description: string; subject: string; language: "greek" | "latin" | "other"; supports_reverse: boolean; published: boolean; staged_config: { enabled?: boolean; initialCount?: number; batchSize?: number } | null; created_at: string; updated_at: string };
-export type CloudCard = { id: string; deck_id: string; stable_key: string; front: string; back: string; category: string | null; rank: number | null; source: string | null; notes: string | null; reverse_prompt: string | null; position: number; metadata: Record<string, unknown> | null };
+export type CloudCard = { id: string; deck_id: string; stable_key: string; front: string; back: string; category: string | null; rank: number | null; source: string | null; notes: string | null; reverse_prompt: string | null; position: number; metadata: Json | null };
 export type ImportCard = { front: string; back: string; category: string; rank: number | null; source: string; notes: string; reversePrompt: string };
 function client() { if (!supabase) throw new Error("Connect Supabase before using cloud decks."); return supabase; }
 export async function listPublishedDecks() { const { data, error } = await client().from("decks").select("*").eq("published", true).order("title"); if (error) throw error; return (data ?? []) as CloudDeck[]; }
@@ -12,7 +13,10 @@ export async function updateDeck(deckId: string, changes: Partial<CloudDeck>) { 
 export async function loadCards(deckId: string) { const rows: CloudCard[] = []; for (let start = 0; ; start += 1_000) { const { data, error } = await client().from("cards").select("*").eq("deck_id", deckId).order("position").range(start, start + 999); if (error) throw error; const page = (data ?? []) as CloudCard[]; rows.push(...page); if (page.length < 1_000) break; } return rows; }
 export async function loadPublishedDeck(slug: string) {
   const { data, error } = await client().from("decks").select("*").eq("slug", slug).eq("published", true).single(); if (error) throw error; const deck = data as CloudDeck, rows = await loadCards(deck.id);
-  const cards: StudyCard[] = rows.map((card) => ({ id: card.stable_key || card.id, deckId: `custom:${deck.id}`, front: card.front, back: card.back, reverseFront: card.reverse_prompt || card.back, reverseBack: card.front, category: card.category || "Cards", rank: card.rank ?? card.position, source: card.source ?? undefined, notes: card.notes ?? undefined, metadata: { cloudCardId: card.id, position: card.position, ...(card.metadata ?? {}) } }));
+  const cards: StudyCard[] = rows.map((card) => {
+    const metadata = card.metadata && typeof card.metadata === "object" && !Array.isArray(card.metadata) ? card.metadata : {};
+    return { id: card.stable_key || card.id, deckId: `custom:${deck.id}`, front: card.front, back: card.back, reverseFront: card.reverse_prompt || card.back, reverseBack: card.front, category: card.category || "Cards", rank: card.rank ?? card.position, source: card.source ?? undefined, notes: card.notes ?? undefined, metadata: { cloudCardId: card.id, position: card.position, ...metadata } };
+  });
   return { cloud: deck, definition: { id: `custom:${deck.id}`, slug: deck.slug, title: deck.title, eyebrow: deck.subject || "Imported deck", description: deck.description, language: deck.language, cards, supportsReverse: deck.supports_reverse, staged: deck.staged_config?.enabled ? { initialCount: deck.staged_config.initialCount ?? 100, batchSize: deck.staged_config.batchSize ?? 25 } : undefined } satisfies DeckDefinition };
 }
 export async function importCards(deckId: string, cards: ImportCard[], replace: boolean) {
@@ -22,7 +26,7 @@ export async function importCards(deckId: string, cards: ImportCard[], replace: 
   for (let index = 0; index < rows.length; index += 400) { const { error } = await client().from("cards").insert(rows.slice(index, index + 400)); if (error) throw error; }
   return loadCards(deckId);
 }
-export async function saveCard(card: Partial<CloudCard> & { deck_id: string; front: string; back: string }) { if (card.id) { const { data, error } = await client().from("cards").update(card).eq("id", card.id).select("*").single(); if (error) throw error; return data as CloudCard; } const current = await loadCards(card.deck_id); const { data, error } = await client().from("cards").insert({ ...card, stable_key: card.stable_key || `${current.length + 1}-${slugify(card.front).slice(0, 48) || "card"}`, position: card.position || current.length + 1 }).select("*").single(); if (error) throw error; return data as CloudCard; }
+export async function saveCard(card: Partial<CloudCard> & { deck_id: string; front: string; back: string }) { if (card.id) { const { id, ...changes } = card; const { data, error } = await client().from("cards").update(changes).eq("id", id).select("*").single(); if (error) throw error; return data as CloudCard; } const current = await loadCards(card.deck_id); const { data, error } = await client().from("cards").insert({ ...card, stable_key: card.stable_key || `${current.length + 1}-${slugify(card.front).slice(0, 48) || "card"}`, position: card.position || current.length + 1 }).select("*").single(); if (error) throw error; return data as CloudCard; }
 export async function deleteCard(cardId: string) { const { error } = await client().from("cards").delete().eq("id", cardId); if (error) throw error; }
 export async function swapCardPositions(first: CloudCard, second: CloudCard) { const api = client(), temporary = -Math.abs(first.position) - 1_000_000; let response = await api.from("cards").update({ position: temporary }).eq("id", first.id); if (response.error) throw response.error; response = await api.from("cards").update({ position: first.position }).eq("id", second.id); if (response.error) throw response.error; response = await api.from("cards").update({ position: second.position }).eq("id", first.id); if (response.error) throw response.error; }
 export async function listCategories(deckId: string) { const { data, error } = await client().from("deck_categories").select("*").eq("deck_id", deckId).order("position"); if (error) throw error; return data ?? []; }

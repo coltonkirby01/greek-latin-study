@@ -10,6 +10,8 @@ Preserve these invariants:
 - Back restores the pre-review snapshot and reuses the review event ID; it must never count both grades.
 - Priority lists show prompts only.
 - Secrets belong in GitHub/Supabase environment settings, never source or browser code.
+- The committed `.env.production` may contain only the Supabase project URL and modern browser-safe publishable key; never add a secret or service-role key.
 - Database authorization must remain enforced by Supabase RLS, even when the UI hides an action.
+- After changing the Supabase schema, apply a new numbered migration and regenerate `src/lib/database.types.ts` from the deployed project.
 
 Run `npm run check` before proposing or committing changes. Any deck-data change must update and pass the source-count tests deliberately.

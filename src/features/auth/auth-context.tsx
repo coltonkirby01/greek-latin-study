@@ -4,7 +4,11 @@ import { appUrl, isSupabaseConfigured, supabase } from "../../lib/supabase";
 
 type AuthContextValue = { configured: boolean; loading: boolean; session: Session | null; user: User | null; isAdmin: boolean; recoveryMode: boolean; signInWithPassword(email: string, password: string): Promise<void>; signUp(email: string, password: string): Promise<void>; signInWithGoogle(): Promise<void>; sendPasswordReset(email: string): Promise<void>; updatePassword(password: string): Promise<void>; signOut(): Promise<void> };
 const AuthContext = createContext<AuthContextValue | null>(null);
-async function readAdmin(user: User | null) { if (!supabase || !user) return false; const { data, error } = await supabase.rpc("is_admin"); return error ? false : data === true; }
+async function readAdmin(user: User | null) {
+  if (!supabase || !user) return false;
+  const { data, error } = await supabase.from("admin_users").select("user_id").eq("user_id", user.id).maybeSingle();
+  return !error && data?.user_id === user.id;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null), [isAdmin, setIsAdmin] = useState(false), [loading, setLoading] = useState(isSupabaseConfigured), [recoveryMode, setRecoveryMode] = useState(false);
