@@ -87,7 +87,7 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ Production Supabase schema and private `reading-audio` bucket created.
 - ✅ Administrator authorization hardened to self-visible membership rows; Supabase security advisor reports no findings.
 - ✅ RLS identity checks use initialization plans and administrator command policies do not overlap; no actionable RLS performance warnings remain.
-- 🟡 Create/upload/preview/publish/open/study/delete-sample integration test requires the owner's first authenticated administrator account.
+- 🟡 The owner's Google-linked administrator account is provisioned; the create/upload/preview/publish/open/study/delete-sample integration test remains pending.
 
 ## Accounts and cloud
 
@@ -98,6 +98,7 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ Production Supabase contains one confirmed email/password account with a recorded sign-in (verified without exposing its identity on 2026-09-05).
 - 🟡 Session persistence, cross-session/device sync, and password reset still require the owner's live browser verification.
 - ✅ Google OAuth is enabled and a live Google sign-in created a confirmed Google identity linked to the existing account (verified without exposing its identity on 2026-09-05).
+- ✅ The sole confirmed Google-linked owner account has administrator membership; future users remain ordinary learners by default.
 
 ## Reading & Audio
 
