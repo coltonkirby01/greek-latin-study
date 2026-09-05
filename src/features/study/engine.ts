@@ -20,7 +20,6 @@ export function priorityScore(card: StudyCard, state: StudyModeState, options: {
   const item = getCardProgress(state, card.id), now = options.now ?? Date.now(); let score = 1;
   if (!item.initialMastered) score += 72;
   if (!item.presented) score += 40;
-  if (options.staged && card.rank && card.rank > options.staged.initialCount) score += 5;
   if (item.reviews) { score += (item.wrong / item.reviews) * 36 + Math.min(18, item.lapses * 2.7); score += item.lastDifficulty === "hard" ? 20 : item.lastDifficulty === "medium" ? 7 : 1; score += (1 - Math.min(1, item.strength)) * 13; score += responseTimePriorityScore(item.lastResponseTimeMs, item.responseTimeTotalMs, item.responseTimeCount); }
   const interval = Math.max(MINUTE, item.intervalMs || MINUTE);
   score += !item.dueAt || item.dueAt <= now ? 13 + Math.min(42, ((now - (item.dueAt || now)) / interval) * 8) : Math.max(0, 4 - ((item.dueAt - now) / interval) * 4);

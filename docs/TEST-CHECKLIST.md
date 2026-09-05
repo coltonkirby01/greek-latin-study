@@ -73,6 +73,7 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ TypeScript production build succeeds.
 - ✅ GitHub Pages base-path build succeeds.
 - ✅ Automated tests pass.
-- ⬜ Desktop browser workflow QA.
+- ✅ Desktop browser workflow QA on the live Pages artifact: navigation, timer start/freeze, grading, corrected Back, Skip, per-direction persistence, Henle Rule 138, Whole Charts, keyboard controls, and saved-reading reload.
 - ⬜ Mobile viewport workflow QA.
-- ⬜ Live GitHub Pages workflow/deployment.
+- ✅ Live GitHub Pages workflow/deployment.
+- 🟡 Repository still has the prior legacy branch publisher enabled; the workflow safely deploys after it, but the owner should select **GitHub Actions** as the Pages source to eliminate the redundant legacy job.
