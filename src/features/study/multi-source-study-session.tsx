@@ -29,6 +29,7 @@ type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number 
 type WarmupMeta = SessionMeta & { remaining: number; total: number };
 const WARMUP_CARDS = 5;
 const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
+const sessionDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 const PropsDefaults = { forward: "Forward", reverse: "Reverse" } as const;
 
@@ -47,9 +48,38 @@ type Props = {
 };
 
 function candidateKey(candidate: Candidate) { return `${candidate.source.id}:${candidate.card.id}`; }
-function sessionLabel(session: ResumableSession) {
-  const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(session.startedAt);
-  return `${when} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`;
+function sessionLabel(session: ResumableSession) { return `${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`; }
+
+function collectResumableSessions(sources: StudySourceDefinition[], envelopes: Record<string, DeckProgressEnvelope>) {
+  const sessions = new Map<string, ResumableSession>();
+  for (const source of sources) {
+    const state = envelopes[source.deck.id]?.modes[source.studyKey];
+    if (!state) continue;
+    for (const progress of Object.values(state.cards)) {
+      for (const review of progress.history) {
+        if (!review.sessionId || review.activityKind === "warmup") continue;
+        const startedAt = review.sessionStartedAt ?? review.reviewedAt;
+        const existing = sessions.get(review.sessionId);
+        if (existing) {
+          existing.startedAt = Math.min(existing.startedAt, startedAt);
+          existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
+          existing.reviews += 1;
+        } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, lastReviewedAt: review.reviewedAt, reviews: 1 });
+      }
+    }
+  }
+  return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
+}
+
+function appendResumableReview(sessions: ResumableSession[], meta: SessionMeta, reviewedAt: number) {
+  const next = sessions.map((item) => ({ ...item }));
+  const existing = next.find((item) => item.id === meta.id);
+  if (existing) {
+    existing.startedAt = Math.min(existing.startedAt, meta.startedAt);
+    existing.lastReviewedAt = Math.max(existing.lastReviewedAt, reviewedAt);
+    existing.reviews += 1;
+  } else next.push({ ...meta, lastReviewedAt: reviewedAt, reviews: 1 });
+  return next.sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
 }
 
 function availableCards(source: StudySourceDefinition, state: StudyModeState) {
@@ -90,6 +120,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(() => resumeSession ? "Continuing the selected past session. Your long-term memory and adaptive priorities are unchanged." : null);
   const [backtracking, setBacktracking] = useState(false), [startGateOpen, setStartGateOpen] = useState(true);
   const [session, setSession] = useState<SessionMeta>(() => resumeSession ?? makeSession());
+  const [resumableSessions, setResumableSessions] = useState<ResumableSession[]>([]);
   const [warmup, setWarmup] = useState<WarmupMeta | null>(null);
 
   const deckIdsKey = useMemo(() => [...new Set(sources.map((source) => source.deck.id))].sort().join("|"), [sources]);
@@ -148,6 +179,13 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
       saveMode(source, createModeState(source.deck.id, source.studyKey, source.deck.cards.length, source.deck.staged));
     }
   }, [ready, saveMode, selectionSignature, sources]);
+
+  useEffect(() => {
+    if (!ready) return;
+    setResumableSessions(collectResumableSessions(sources, envelopesRef.current));
+    // Re-index only when the selected pool/direction changes or progress first loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, selectionSignature]);
 
   function allCandidates() {
     const items: Candidate[] = [];
@@ -220,26 +258,6 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const stats = useMemo(() => aggregateStats(visibleCandidates, states), [states, visibleCandidates]);
   const priority = useMemo(() => visibleCandidates.map(({ source, card }) => ({ card, progress: getCardProgress(states.get(source.id) ?? modeFor(source), card.id), score: priorityScore(card, states.get(source.id) ?? modeFor(source), { ignoreRecency: true }) })).sort((a, b) => b.score - a.score).slice(0, 5), [modeFor, states, visibleCandidates]);
   const sourceByCard = useMemo(() => new Map(sources.flatMap((source) => source.cards.map((card) => [`${card.deckId}:${card.id}`, source] as const))), [sources]);
-  const resumableSessions = useMemo(() => {
-    const sessions = new Map<string, ResumableSession>();
-    for (const source of sources) {
-      const state = states.get(source.id);
-      if (!state) continue;
-      for (const progress of Object.values(state.cards)) {
-        for (const review of progress.history) {
-          if (!review.sessionId || review.activityKind === "warmup") continue;
-          const startedAt = review.sessionStartedAt ?? review.reviewedAt;
-          const existing = sessions.get(review.sessionId);
-          if (existing) {
-            existing.startedAt = Math.min(existing.startedAt, startedAt);
-            existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
-            existing.reviews += 1;
-          } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, lastReviewedAt: review.reviewedAt, reviews: 1 });
-        }
-      }
-    }
-    return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
-  }, [sources, states]);
 
   function reveal() { if (!current || revealed || editingTransaction || startGateOpen) return; setBacktracking(false); setReviewFront(false); setCapturedTimeMs(timer.capture()); setRevealed(true); }
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
@@ -297,6 +315,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     const transaction: MixedReviewTransaction = { reviewId, cardId: current.card.id, result, difficulty, responseTimeMs, beforeState, sourceId: source.id, deckId: source.deck.id, studyKey: source.studyKey, sessionId, sessionStartedAt, activityKind };
     const corrected = Boolean(editingTransaction), unlocked = next.lastUnlock?.at === reviewedAt ? next.lastUnlock : null;
     saveMode(source, next, { review: transaction }); setLastTransaction(transaction); resetUi();
+    if (!corrected && activityKind === "study") setResumableSessions((currentSessions) => appendResumableReview(currentSessions, { id: sessionId, startedAt: sessionStartedAt }, reviewedAt));
 
     if (warmup && !editingTransaction) {
       if (warmup.remaining <= 1) {
