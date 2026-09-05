@@ -1,0 +1,7 @@
+import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { loadPublishedDeck } from "../features/decks/deck-service";
+import { StudySession } from "../features/study/study-session";
+import type { StudyDirection } from "../features/study/types";
+import { useAsync } from "../hooks/use-async";
+export function DynamicDeckPage() { const { slug = "" } = useParams(), [direction, setDirection] = useState<StudyDirection>("forward"), { value, error, loading } = useAsync(() => loadPublishedDeck(slug), [slug]); if (loading) return <main className="page-shell"><div className="study-loading panel-surface"><p>Loading deck…</p></div></main>; if (error || !value) return <main className="page-shell article-page"><section className="prose-panel panel-surface"><h1>This deck could not be opened.</h1><p>{error ?? "It may be unpublished."}</p><Link to="/decks">Return to deck library</Link></section></main>; const deck = value.definition; return <main className="page-shell study-page"><div className="study-page-heading"><div><p className="eyebrow">{deck.eyebrow}</p><h1>{deck.title}</h1></div><p>{deck.cards.length} cards · {deck.supportsReverse ? "two directions" : "forward"}</p></div><StudySession deck={deck} studyKey={direction} direction={direction} onDirectionChange={deck.supportsReverse ? setDirection : undefined} directionLabels={{ forward: "Front → Back", reverse: "Back → Front" }} cardMeta={(card) => [card.source, card.rank ? `Rank ${card.rank}` : ""].filter(Boolean).join(" · ")} /></main>; }

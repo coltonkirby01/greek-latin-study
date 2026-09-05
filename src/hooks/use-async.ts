@@ -1,0 +1,3 @@
+import { useEffect, useState } from "react";
+export function useAsync<T>(loader: () => Promise<T>, dependencies: unknown[] = []) { const [value, setValue] = useState<T | null>(null), [error, setError] = useState<string | null>(null), [loading, setLoading] = useState(true); useEffect(() => { let active = true; setLoading(true); setError(null); void loader().then((next) => { if (active) setValue(next); }).catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : String(reason)); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; /* caller supplies dependencies */ // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, dependencies); return { value, error, loading }; }
