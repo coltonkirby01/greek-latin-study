@@ -19,7 +19,7 @@ export function HomePage() {
       <div className="method-note"><Repeat2 /><div><strong>One deliberate cycle</strong><span>Recall · reveal · rate · review</span></div></div>
     </section>
     <section className="course-grid">
-      {homeCourses.map((course) => <Course key={course.id} visual={courseVisuals[course.visual]} {...course} />)}
+      {homeCourses.map((course) => <Course key={course.id} {...course} visual={courseVisuals[course.visual]} />)}
     </section>
     <section className="sign-in-callout panel-surface">
       <div className="callout-icon"><Cloud /></div>
