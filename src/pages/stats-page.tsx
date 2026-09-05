@@ -315,6 +315,7 @@ export function StatsPage() {
   const scopedSessions = useMemo(() => value ? (allSessionsSelected ? value.sessions : value.sessions.filter((session) => selectedSessions?.has(session.id) ?? false)) : [], [allSessionsSelected, selectedSessions, value]);
 
   if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;
+  const loadedValue = value;
 
   function sessionName(session: SessionSummary) { return session.name; }
   function toggleSession(id: string, checked: boolean) {
@@ -335,7 +336,7 @@ export function StatsPage() {
     setBusySessionId(session.id); setActionError(null);
     try {
       const saves: Promise<unknown>[] = [];
-      for (const envelope of Object.values(value.envelopes)) {
+      for (const envelope of Object.values(loadedValue.envelopes)) {
         if (!envelope) continue;
         const mutation = renameSessionInEnvelope(envelope, session.id, name);
         if (mutation.changed) saves.push(saveProgressEnvelope(mutation.envelope, user));
@@ -352,7 +353,7 @@ export function StatsPage() {
     setBusySessionId(session.id); setActionError(null);
     try {
       const saves: Promise<unknown>[] = [];
-      for (const envelope of Object.values(value.envelopes)) {
+      for (const envelope of Object.values(loadedValue.envelopes)) {
         if (!envelope) continue;
         const mutation = deleteSessionFromEnvelope(envelope, session.id);
         if (mutation.changed) saves.push(saveProgressEnvelope(mutation.envelope, user));
