@@ -13,7 +13,7 @@ describe("study keyboard shortcuts", () => {
     expect(studyShortcut({ ...context, key: " ", typingTarget: true })).toBeNull();
   });
 
-  it("uses space to reveal on the front and not to save before grading is complete", () => {
+  it("uses Space to reveal on the front and not to save before grading is complete", () => {
     expect(studyShortcut({ ...context, key: " " })).toEqual({ type: "reveal" });
     expect(studyShortcut({ ...context, key: " ", revealed: true })).toBeNull();
     expect(studyShortcut({ ...context, key: " ", revealed: true, result: "right" })).toBeNull();
@@ -29,9 +29,13 @@ describe("study keyboard shortcuts", () => {
     expect(studyShortcut({ ...context, key: "3", revealed: true })).toEqual({ type: "difficulty", value: "hard" });
   });
 
-  it("saves with Space or Enter only when both grading inputs are complete", () => {
-    expect(studyShortcut({ ...context, key: "Enter", revealed: true, result: "right" })).toBeNull();
-    expect(studyShortcut({ ...context, key: "Enter", revealed: true, result: "right", difficulty: "medium" })).toEqual({ type: "save" });
+  it("uses Enter to flip after reveal without saving", () => {
+    expect(studyShortcut({ ...context, key: "Enter", revealed: true })).toEqual({ type: "flip" });
+    expect(studyShortcut({ ...context, key: "Enter", revealed: true, result: "right", difficulty: "medium" })).toEqual({ type: "flip" });
+  });
+
+  it("saves with Space only when both grading inputs are complete", () => {
+    expect(studyShortcut({ ...context, key: " ", revealed: true, result: "right", difficulty: "medium" })).toEqual({ type: "save" });
     expect(studyShortcut({ ...context, key: " ", revealed: true, result: "wrong", difficulty: "hard" })).toEqual({ type: "save" });
   });
 });
