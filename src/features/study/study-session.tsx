@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/auth-context";
 import { createEnvelope, createModeState, directionalCopy, ensureCurrentCard, formatResponseTime, highestPriorityCards, pickNextCard, presentCard, priorityReason, reviewAndAdvance, skipAndAdvance, studyStats } from "./engine";
 import { deleteReviewEvent, loadProgressEnvelope, saveProgressEnvelope, upsertReviewEvent } from "./progress-repository";
+import "./study-gate.css";
 import type { DeckDefinition, DeckProgressEnvelope, DirectionalCardCopy, ReviewDifficulty, ReviewResult, ReviewTransaction, SelectionMode, StudyCard, StudyDirection, StudyModeState } from "./types";
 import { useResponseTimer } from "./use-response-timer";
 
@@ -19,6 +20,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   const [capturedTimeMs, setCapturedTimeMs] = useState<number | null>(null), [lastTransaction, setLastTransaction] = useState<ReviewTransaction | null>(null), [editingTransaction, setEditingTransaction] = useState<ReviewTransaction | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(null);
   const [backtracking, setBacktracking] = useState(false);
+  const [startGateOpen, setStartGateOpen] = useState(true);
   const lastStudyKey = useRef(studyKey);
 
   const saveMode = useCallback(async (nextMode: StudyModeState, options?: { review?: ReviewTransaction; deleteReviewId?: string }) => {
@@ -38,18 +40,18 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
     if (!envelope) return; const existing = envelope.modes[studyKey] ?? createModeState(deck.id, studyKey, deck.cards.length, deck.staged); let ready = existing;
     if (!cards.some((card) => card.id === existing.currentCardId)) { const selected = pickNextCard(cards, existing, selectionMode, { staged: deck.staged }); if (selected) ready = presentCard(existing, selected); }
     if (ready !== existing || !envelope.modes[studyKey]) void saveMode(ready);
-    if (lastStudyKey.current !== studyKey) { lastStudyKey.current = studyKey; setLastTransaction(null); setEditingTransaction(null); setRevealed(false); setResult(null); setDifficulty(null); setCapturedTimeMs(null); }
+    if (lastStudyKey.current !== studyKey) { lastStudyKey.current = studyKey; setLastTransaction(null); setEditingTransaction(null); setRevealed(false); setResult(null); setDifficulty(null); setCapturedTimeMs(null); setStartGateOpen(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyKey, cardSignature]);
 
   const modeState = envelope?.modes[studyKey] ?? null, current = modeState ? cards.find((card) => card.id === modeState.currentCardId) ?? null : null;
-  const timer = useResponseTimer(current && modeState ? `${studyKey}:${current.id}:${modeState.cards[current.id]?.lastPresentedAt ?? 0}` : null, Boolean(current && modeState && !revealed && !editingTransaction));
+  const timer = useResponseTimer(current && modeState ? `${studyKey}:${current.id}:${modeState.cards[current.id]?.lastPresentedAt ?? 0}` : null, Boolean(current && modeState && !revealed && !editingTransaction && !startGateOpen));
   const stats = useMemo(() => modeState ? studyStats(cards, modeState) : null, [cards, modeState]);
   const priority = useMemo(() => modeState ? highestPriorityCards(cards, modeState, deck.staged, 5) : [], [cards, deck.staged, modeState]);
   const copy = current ? directionalCopy(current, direction) : null;
 
   function resetUi() { setRevealed(false); setBacktracking(false); setResult(null); setDifficulty(null); setCapturedTimeMs(null); setEditingTransaction(null); }
-  function reveal() { if (!current || revealed || editingTransaction) return; setBacktracking(false); setCapturedTimeMs(timer.capture()); setRevealed(true); }
+  function reveal() { if (!current || revealed || editingTransaction || startGateOpen) return; setBacktracking(false); setCapturedTimeMs(timer.capture()); setRevealed(true); }
   function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!modeState || !current) return; const selected = pickNextCard(cards, modeState, next, { excludeCardId: current.id, staged: deck.staged }); if (selected) { resetUi(); void saveMode(presentCard(modeState, selected)); } }
   function skip() { if (!modeState || editingTransaction) return; resetUi(); void saveMode(skipAndAdvance(modeState, cards, selectionMode, deck.staged)); }
   function back() { if (!lastTransaction || !modeState) return; const transaction = lastTransaction; setLastTransaction(null); setEditingTransaction(transaction); setResult(transaction.result); setDifficulty(transaction.difficulty); setCapturedTimeMs(transaction.responseTimeMs); setBacktracking(true); setRevealed(false); void saveMode(transaction.beforeState, { deleteReviewId: transaction.reviewId }); requestAnimationFrame(() => requestAnimationFrame(() => setRevealed(true))); setNotice("Previous grade undone. Choose the corrected result and save it."); }
@@ -61,7 +63,21 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   }
 
   useEffect(() => {
-    function keydown(event: KeyboardEvent) { const target = event.target as HTMLElement | null; if (target?.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='listbox']")) return; if (event.key === " " && !revealed) { event.preventDefault(); reveal(); return; } if (!revealed) return; if (event.key === "1") setResult("right"); else if (event.key === "2") setResult("wrong"); else if (event.key === "3") setDifficulty("easy"); else if (event.key === "4") setDifficulty("medium"); else if (event.key === "5") setDifficulty("hard"); else if (event.key === "Enter" && result && difficulty) { event.preventDefault(); saveNext(); } }
+    function requireRestart() { if (!revealed && !editingTransaction) setStartGateOpen(true); }
+    function visibility() { if (document.visibilityState === "hidden") requireRestart(); }
+    window.addEventListener("blur", requireRestart); document.addEventListener("visibilitychange", visibility);
+    return () => { window.removeEventListener("blur", requireRestart); document.removeEventListener("visibilitychange", visibility); };
+  }, [editingTransaction, revealed]);
+
+  useEffect(() => {
+    function keydown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (startGateOpen) { event.preventDefault(); setStartGateOpen(false); return; }
+      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='listbox']")) return;
+      if (event.key === " " && !revealed) { event.preventDefault(); reveal(); return; }
+      if (!revealed) return;
+      if (event.key === "1") setResult("right"); else if (event.key === "2") setResult("wrong"); else if (event.key === "3") setDifficulty("easy"); else if (event.key === "4") setDifficulty("medium"); else if (event.key === "5") setDifficulty("hard"); else if (event.key === "Enter" && result && difficulty) { event.preventDefault(); saveNext(); }
+    }
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   });
 
@@ -71,6 +87,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   return (
     <div className="study-grid" data-testid="study-session" data-study-key={studyKey}>
       <section className="study-panel panel-surface" aria-label={`${deck.title} study card`}>
+        {startGateOpen && !revealed && !editingTransaction && <div className="study-start-gate" role="dialog" aria-modal="true" aria-label="Start flashcard timing"><div className="study-start-card"><p className="eyebrow">Timer paused</p><h2>Ready?</h2><p>The flashcard timer will begin only when you start.</p><button type="button" className="primary-button study-start-button" onClick={() => setStartGateOpen(false)}>Start</button><span>or press any key to begin</span></div></div>}
         <div className="study-toolbar session-toolbar">
           <div className="toolbar-control-group">
             {deck.supportsReverse && onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
