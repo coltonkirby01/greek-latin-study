@@ -1,10 +1,10 @@
 import { Gauge, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
-import { directionalCopy, formatResponseTime, highestPriorityCards, priorityReason, studyStats } from "./engine";
-import type { DeckDefinition, DirectionalCardCopy, ReviewDifficulty, ReviewResult, StudyCard, StudyDirection } from "./types";
+import { directionalCopy, formatResponseTime, priorityReason, studyStats } from "./engine";
+import type { CardProgress, DeckDefinition, DirectionalCardCopy, ReviewDifficulty, ReviewResult, StudyCard, StudyDirection } from "./types";
 
 type Stats = ReturnType<typeof studyStats>;
-type Priority = ReturnType<typeof highestPriorityCards>;
+type Priority = Array<{ card: StudyCard; progress: CardProgress; score: number }>;
 
 function percent(value: number | null) { return value === null ? "—" : `${(value * 100).toFixed(value >= 0.995 ? 0 : 1)}%`; }
 
@@ -41,7 +41,7 @@ export function StudyRatingControls({ revealed, result, difficulty, editing, onR
   </div>;
 }
 
-export function StudySidebar({ deck, cards, copy, direction, stats, priority, priorityPrompt }: {
+export function StudySidebar({ deck, cards, copy, direction, stats, priority, priorityPrompt, cardCopy }: {
   deck: DeckDefinition;
   cards: StudyCard[];
   copy: DirectionalCardCopy;
@@ -49,6 +49,7 @@ export function StudySidebar({ deck, cards, copy, direction, stats, priority, pr
   stats: Stats;
   priority: Priority;
   priorityPrompt?: (card: StudyCard, copy: DirectionalCardCopy) => ReactNode;
+  cardCopy?: (card: StudyCard, direction: StudyDirection) => DirectionalCardCopy;
 }) {
   const progressPercent = stats.available ? stats.mastered / stats.available * 100 : 0;
   return <aside className="study-sidebar">
@@ -59,7 +60,7 @@ export function StudySidebar({ deck, cards, copy, direction, stats, priority, pr
     </section>
     <section className="panel-surface priority-panel">
       <div className="sidebar-heading"><div><p className="eyebrow">Prompts only</p><h2>Highest-Priority Review</h2></div><RotateCcw /></div>
-      <div className="priority-list">{priority.map(({ card, progress, score }) => { const itemCopy = directionalCopy(card, direction); return <div className="priority-row" key={card.id}><span className="priority-meta">{card.rank ? `#${card.rank}` : card.category ?? "Card"}</span><span className="priority-prompt">{priorityPrompt ? priorityPrompt(card, itemCopy) : itemCopy.prompt}<small>{priorityReason(progress)}</small></span><span className="priority-score">{Math.max(0, Math.round(score))}</span></div>; })}</div>
+      <div className="priority-list">{priority.map(({ card, progress, score }) => { const itemCopy = cardCopy ? cardCopy(card, direction) : directionalCopy(card, direction); return <div className="priority-row" key={`${card.deckId}:${card.id}`}><span className="priority-meta">{card.rank ? `#${card.rank}` : card.category ?? "Card"}</span><span className="priority-prompt">{priorityPrompt ? priorityPrompt(card, itemCopy) : itemCopy.prompt}<small>{priorityReason(progress)}</small></span><span className="priority-score">{Math.max(0, Math.round(score))}</span></div>; })}</div>
       <p className="source-note">Answers remain hidden. Correctness, difficulty, recall time, recency, strength, and due dates all affect priority.</p>
     </section>
   </aside>;
