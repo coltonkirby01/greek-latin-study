@@ -13,7 +13,9 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  # Keep this distinct from GitHub's legacy Pages publisher. The deploy job
+  # waits for that publisher below, then replaces its output with `dist`.
+  group: pages-custom
   cancel-in-progress: true
 
 jobs:
