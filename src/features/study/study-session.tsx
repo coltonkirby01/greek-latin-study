@@ -1,6 +1,7 @@
 import { ArrowLeft, Cloud, Laptop, SkipForward, Timer } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
 import { createEnvelope, createModeState, directionalCopy, ensureCurrentCard, formatResponseTime, highestPriorityCards, pickNextCard, presentCard, reviewAndAdvance, skipAndAdvance, studyStats } from "./engine";
 import { deleteReviewEvent, loadProgressEnvelope, saveProgressEnvelope, upsertReviewEvent } from "./progress-repository";
@@ -97,6 +98,8 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
         <div className="toolbar-control-group">
           {deck.supportsReverse && onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
+          <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || editingTransaction || startGateOpen}>Pause timer</button>
+          <Link className="small-outline-button" to="/stats">Stats</Link>
           {toolbarExtra}
         </div>
         <div className={`storage-status ${syncStatus === "error" ? "storage-error" : ""}`}>{user ? <Cloud aria-hidden="true" /> : <Laptop aria-hidden="true" />}<span>{syncStatus === "loading" ? "Loading progress" : syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Saved locally; cloud sync needs attention" : user ? "Cloud progress synced" : "Guest progress on this device"}</span></div>
@@ -109,7 +112,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
           <div className="flashcard-face flashcard-back-face" aria-hidden={!showingAnswer}><span className="card-side">Answer</span>{renderBack ? renderBack(current, copy) : <span className="answer-block"><strong className={deck.language === "greek" ? "greek-answer-title" : "study-answer"}>{copy.answer}</strong>{current.notes && <span className="answer-notes">{current.notes}</span>}</span>}</div>
         </div>
       </div>
-      <StudyRatingControls revealed={revealed} result={result} difficulty={difficulty} editing={Boolean(editingTransaction)} onReveal={reveal} onResult={setResult} onDifficulty={setDifficulty} onSave={saveNext} />
+      <StudyRatingControls revealed={revealed} result={result} difficulty={difficulty} editing={Boolean(editingTransaction)} onReveal={reveal} onFlip={toggleReviewFace} onResult={setResult} onDifficulty={setDifficulty} onSave={saveNext} />
     </section>
     <StudySidebar deck={deck} cards={cards} copy={copy} direction={direction} stats={stats} priority={priority} priorityPrompt={priorityPrompt} />
   </div>;
