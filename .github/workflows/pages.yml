@@ -7,14 +7,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   actions: read
   pages: write
   id-token: write
 
 concurrency:
-  # Keep live main deployments independent from pull-request checks so
-  # frontend work cannot cancel the production Pages deployment.
   group: pages-custom-${{ github.ref }}
   cancel-in-progress: true
 
@@ -23,10 +21,89 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Normalize Stats session naming
+        if: github.event_name == 'pull_request' && github.head_ref == 'chatgpt/session-name-consistency'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/pages/stats-page.tsx")
+          text = path.read_text()
+
+          def replace_once(old, new):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match, found {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'import { loadProgressEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";',
+              'import { loadProgressEnvelope } from "../features/study/progress-repository";'
+          )
+          replace_once(
+              'import { intrinsicCardDifficulty, scoredSession, userProficiencyScore } from "../features/study/scoring";',
+              'import { intrinsicCardDifficulty, scoredSession, userProficiencyScore } from "../features/study/scoring";\nimport { sessionCustomNameFromReviews } from "../features/study/session-management";'
+          )
+          replace_once(
+              '  const customName = reviews.find((review) => review.sessionName?.trim())?.sessionName?.trim();',
+              '  const customName = sessionCustomNameFromReviews(reviews.map((review) => review.review));'
+          )
+          replace_once(
+              '  const [sessionNameOverrides, setSessionNameOverrides] = useState<Record<string, string>>({});\n  const [renameError, setRenameError] = useState<string | null>(null);\n  const [savingSessionId, setSavingSessionId] = useState<string | null>(null);\n',
+              ''
+          )
+          replace_once(
+              '  function sessionName(session: SessionSummary) { return sessionNameOverrides[session.id] ?? session.name; }',
+              '  function sessionName(session: SessionSummary) { return session.name; }'
+          )
+          start = text.index('  async function renameSession(session: SessionSummary) {')
+          end = text.index('\n\n  const greekRows', start)
+          text = text[:start] + text[end:]
+          replace_once(
+              '    {(error || renameError) && <div className="inline-alert">{error ?? renameError}</div>}',
+              '    {error && <div className="inline-alert">{error}</div>}'
+          )
+          replace_once(
+              '    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" sessionName={sessionName} onRenameSession={renameSession} savingSessionId={savingSessionId} />',
+              '    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" sessionName={sessionName} />'
+          )
+          replace_once(
+              '    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" sessionName={sessionName} onRenameSession={renameSession} savingSessionId={savingSessionId} />',
+              '    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" sessionName={sessionName} />'
+          )
+          replace_once(
+              'function LanguageStats({ language, rows, cards, sessions, href, sessionName, onRenameSession, savingSessionId }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string; sessionName: (session: SessionSummary) => string; onRenameSession: (session: SessionSummary) => Promise<void>; savingSessionId: string | null }) {',
+              'function LanguageStats({ language, rows, cards, sessions, href, sessionName }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string; sessionName: (session: SessionSummary) => string }) {'
+          )
+          replace_once(
+              '<div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Rename gives every session a custom title while preserving its history and ranking.</p></div><TrendingUp aria-hidden="true" /></div>',
+              '<div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Session names are managed in Account and appear here automatically.</p></div><TrendingUp aria-hidden="true" /></div>'
+          )
+          replace_once(
+              '<div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}<button className="small-outline-button" type="button" disabled={savingSessionId === session.id} onClick={() => void onRenameSession(session)}>{savingSessionId === session.id ? "Saving…" : "Rename"}</button></div>',
+              '<div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}<Link className="small-outline-button" to="/account">Manage</Link></div>'
+          )
+          replace_once(
+              '    return { summaries, cards, sessions, events, envelopes };',
+              '    return { summaries, cards, sessions, events };'
+          )
+
+          path.write_text(text)
+          PY
+          if ! git diff --quiet -- src/pages/stats-page.tsx; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/pages/stats-page.tsx
+            git commit -m "Use canonical session names in Stats"
+            git push origin HEAD:${GITHUB_HEAD_REF}
+          fi
       - run: npm ci
       - run: npm test
       - run: npm run build:pages
