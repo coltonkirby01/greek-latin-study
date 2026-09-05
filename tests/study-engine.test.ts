@@ -42,6 +42,12 @@ describe("unified study engine", () => {
     expect(getCardProgress(state, "one")).toMatchObject({ wrong: 1, easy: 1, lastResponseTimeMs: 1_234 });
   });
 
+  it("preserves session and warm-up classification in review history", () => {
+    let state = presentCard(createModeState("test", "forward", 2), cards[0], 1);
+    state = recordReview(state, cards[0], { id: "warmup-review", result: "right", difficulty: "medium", responseTimeMs: 1_100, reviewedAt: 2, sessionId: "warmup-session", sessionStartedAt: 1, activityKind: "warmup" });
+    expect(getCardProgress(state, "one").history.at(-1)).toMatchObject({ id: "warmup-review", sessionId: "warmup-session", activityKind: "warmup" });
+  });
+
   it("gives slow correct recall a shorter interval and higher priority", () => {
     const base = presentCard(createModeState("test", "forward", 2), cards[0]);
     const fast = recordReview(base, cards[0], { id: "fast", result: "right", difficulty: "easy", responseTimeMs: 2_000, reviewedAt: 10_000 });
