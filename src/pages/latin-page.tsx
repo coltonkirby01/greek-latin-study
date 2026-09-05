@@ -29,6 +29,11 @@ function setValues(current: OptionalSelection, allValues: readonly string[], val
 function selected(selection: OptionalSelection, value: string) { return selection === null || selection.has(value); }
 function selectionKey(selection: OptionalSelection) { return selection === null ? "*" : [...selection].sort().join(","); }
 function grammarSelectionKey(filters: GrammarSelections) { return [selectionKey(filters.sections), selectionKey(filters.voices), selectionKey(filters.formGroups), selectionKey(filters.verbSubsections)].join("~"); }
+function grammarFiltersAreAll(filters: GrammarSelections) { return filters.sections === null && filters.voices === null && filters.formGroups === null && filters.verbSubsections === null; }
+function selectionState(selection: OptionalSelection, allValues: readonly string[]) {
+  const selectedCount = selection === null ? allValues.length : allValues.filter((value) => selection.has(value)).length;
+  return { checked: selectedCount === allValues.length, mixed: selectedCount > 0 && selectedCount < allValues.length, selectedCount };
+}
 
 function sectionCounts(cards: readonly StudyCard[]) {
   const counts = new Map<string, number>(HENLE_PART1_SECTIONS.map((section) => [section, 0]));
@@ -39,44 +44,96 @@ function sectionCounts(cards: readonly StudyCard[]) {
   return counts;
 }
 
-function HenleSourceFilterDisclosure({ title, cards, filters, setFilters }: {
-  title: string;
+function HenleSourceFilters({ cards, filters, setFilters }: {
   cards: readonly StudyCard[];
   filters: GrammarSelections;
   setFilters: Dispatch<SetStateAction<GrammarSelections>>;
 }) {
   const counts = useMemo(() => sectionCounts(cards), [cards]);
-  const selectedSectionCount = filters.sections === null ? HENLE_PART1_SECTIONS.length : filters.sections.size;
-  const verbsIncluded = selected(filters.sections, "Verbs");
-  const verbSummary = filters.voices === null && filters.formGroups === null && filters.verbSubsections === null ? "All verb forms" : "Verb selection narrowed";
   const allSections = HENLE_PART1_SECTIONS as readonly string[];
   const allVoices = verbVoices as readonly string[];
   const allFormGroups = verbFormGroups as readonly string[];
   const allSubsections = verbSubsections as readonly string[];
+  const sectionState = selectionState(filters.sections, allSections);
+  const voiceState = selectionState(filters.voices, allVoices);
+  const formState = selectionState(filters.formGroups, allFormGroups);
+  const familyState = selectionState(filters.verbSubsections, allSubsections);
+  const verbsIncluded = selected(filters.sections, "Verbs");
 
   function change(key: keyof GrammarSelections, allValues: readonly string[], values: readonly string[], checked: boolean) {
     setFilters((current) => ({ ...current, [key]: setValues(current[key], allValues, values, checked) }));
   }
 
-  return <FilterDisclosure title={`${title} options`} summary={`${selectedSectionCount} of ${HENLE_PART1_SECTIONS.length} Part 1 sections selected`}>
-    <FilterSection title="Part 1 forms" description="Choose any combination of Henle's grammatical sections." onAll={() => setFilters((current) => ({ ...current, sections: null }))} onNone={() => setFilters((current) => ({ ...current, sections: new Set() }))}>
-      {HENLE_PART1_SECTIONS.map((section) => {
+  return <FilterDisclosure
+    title="Part 1 sections"
+    summary={`${sectionState.selectedCount} of ${allSections.length} selected`}
+    checked={grammarFiltersAreAll(filters)}
+    mixed={!grammarFiltersAreAll(filters) && (sectionState.selectedCount > 0 || voiceState.selectedCount > 0 || formState.selectedCount > 0 || familyState.selectedCount > 0)}
+    onCheckedChange={(checked) => setFilters(checked ? blankGrammarSelections() : { ...blankGrammarSelections(), sections: new Set() })}
+  >
+    <FilterSection title="Parts of speech" description="Select every Part 1 section from the closed parent row, or open this menu to narrow the source vertically.">
+      {HENLE_PART1_SECTIONS.filter((section) => section !== "Verbs").map((section) => {
         const count = counts.get(section) ?? 0;
         return <FilterCheckbox key={section} label={section} count={count} checked={selected(filters.sections, section)} disabled={count === 0} onChange={(checked) => change("sections", allSections, [section], checked)} />;
       })}
-    </FilterSection>
 
-    {verbsIncluded && <FilterDisclosure title="Verb details" summary={verbSummary} nested>
-      <FilterSection title="Voice" description="Optionally narrow the selected verb material by voice." onAll={() => setFilters((current) => ({ ...current, voices: null }))} onNone={() => setFilters((current) => ({ ...current, voices: new Set() }))}>
-        {verbVoices.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.voices, value)} onChange={(checked) => change("voices", allVoices, [value], checked)} />)}
-      </FilterSection>
-      <FilterSection title="Mood / form" description="For example, choose Indicative alone or combine Indicative and Subjunctive." onAll={() => setFilters((current) => ({ ...current, formGroups: null }))} onNone={() => setFilters((current) => ({ ...current, formGroups: new Set() }))}>
-        {verbFormGroups.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.formGroups, value)} onChange={(checked) => change("formGroups", allFormGroups, [value], checked)} />)}
-      </FilterSection>
-      <FilterSection title="Verb family" description="Optional further narrowing by conjugation or special verb family." onAll={() => setFilters((current) => ({ ...current, verbSubsections: null }))} onNone={() => setFilters((current) => ({ ...current, verbSubsections: new Set() }))}>
-        {verbSubsections.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.verbSubsections, value)} onChange={(checked) => change("verbSubsections", allSubsections, [value], checked)} />)}
-      </FilterSection>
-    </FilterDisclosure>}
+      <FilterDisclosure
+        title="Verbs"
+        count={counts.get("Verbs") ?? 0}
+        summary="Voice · mood/form · family"
+        nested
+        checked={selected(filters.sections, "Verbs") && filters.voices === null && filters.formGroups === null && filters.verbSubsections === null}
+        mixed={selected(filters.sections, "Verbs") && (filters.voices !== null || filters.formGroups !== null || filters.verbSubsections !== null)}
+        onCheckedChange={(checked) => setFilters((current) => ({
+          ...current,
+          sections: setValues(current.sections, allSections, ["Verbs"], checked),
+          voices: null,
+          formGroups: null,
+          verbSubsections: null,
+        }))}
+      >
+        {verbsIncluded && <>
+          <FilterDisclosure
+            title="Voice"
+            summary={`${voiceState.selectedCount} of ${allVoices.length} selected`}
+            nested
+            checked={voiceState.checked}
+            mixed={voiceState.mixed}
+            onCheckedChange={(checked) => setFilters((current) => ({ ...current, voices: checked ? null : new Set() }))}
+          >
+            <FilterSection title="Voice" description="Choose all voices from the parent row, or narrow to one or several.">
+              {verbVoices.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.voices, value)} onChange={(checked) => change("voices", allVoices, [value], checked)} />)}
+            </FilterSection>
+          </FilterDisclosure>
+
+          <FilterDisclosure
+            title="Mood / form"
+            summary={`${formState.selectedCount} of ${allFormGroups.length} selected`}
+            nested
+            checked={formState.checked}
+            mixed={formState.mixed}
+            onCheckedChange={(checked) => setFilters((current) => ({ ...current, formGroups: checked ? null : new Set() }))}
+          >
+            <FilterSection title="Mood / form" description="For example, select Indicative alone or combine several forms.">
+              {verbFormGroups.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.formGroups, value)} onChange={(checked) => change("formGroups", allFormGroups, [value], checked)} />)}
+            </FilterSection>
+          </FilterDisclosure>
+
+          <FilterDisclosure
+            title="Verb family"
+            summary={`${familyState.selectedCount} of ${allSubsections.length} selected`}
+            nested
+            checked={familyState.checked}
+            mixed={familyState.mixed}
+            onCheckedChange={(checked) => setFilters((current) => ({ ...current, verbSubsections: checked ? null : new Set() }))}
+          >
+            <FilterSection title="Verb family" description="Optionally narrow by conjugation or special verb family.">
+              {verbSubsections.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.verbSubsections, value)} onChange={(checked) => change("verbSubsections", allSubsections, [value], checked)} />)}
+            </FilterSection>
+          </FilterDisclosure>
+        </>}
+      </FilterDisclosure>
+    </FilterSection>
   </FilterDisclosure>;
 }
 
@@ -107,6 +164,7 @@ export function LatinPage() {
     return groups;
   }, [vocabularyDeck]);
   const allVocabularyParts = useMemo(() => [...vocabularyGroups.values()].flat().map((item) => item.value), [vocabularyGroups]);
+  const vocabularyState = selectionState(vocabularyParts, allVocabularyParts);
 
   const vocabularyCards = useMemo(() => vocabularyDeck?.cards.filter((card) => matchesVocabularyCard(card, vocabularyParts)) ?? [], [vocabularyDeck, vocabularyParts]);
   const grammarFormCards = useMemo(() => henle?.individualDeck.cards.filter((card) => matchesGrammarCard(card, formFilters)) ?? [], [formFilters, henle]);
@@ -114,7 +172,7 @@ export function LatinPage() {
 
   const sources = useMemo(() => {
     const next: StudySourceDefinition[] = [];
-    if (materials.has("vocabulary") && vocabularyDeck) next.push({ id: "vocabulary", label: "Vocabulary", deck: vocabularyDeck, cards: vocabularyCards, studyKey: direction, direction });
+    if (materials.has("vocabulary") && vocabularyDeck) next.push({ id: "vocabulary", label: "Latin vocabulary", deck: vocabularyDeck, cards: vocabularyCards, studyKey: direction, direction });
     if (materials.has("grammar-forms") && henle) next.push({ id: "grammar-forms", label: "Grammar form", deck: henle.individualDeck, cards: grammarFormCards, studyKey: `individual:${direction}`, direction });
     if (materials.has("grammar-charts") && henle) next.push({ id: "grammar-charts", label: "Whole chart", deck: henle.chartDeck, cards: grammarChartCards, studyKey: "chart", direction: "forward" });
     return next;
@@ -124,34 +182,94 @@ export function LatinPage() {
   const virtualDeck = useMemo<DeckDefinition>(() => ({ id: "latin-study-app", slug: "latin", title: "Latin", eyebrow: "Vocabulary · grammar", description: "A unified Latin study surface that can mix Dickinson vocabulary with Henle forms and whole charts while preserving each source's progress.", language: "latin", cards: selectedCards, supportsReverse: true }), [selectedCards]);
   const resetKey = `${direction}|${[...materials].sort().join(",")}|vocab:${selectionKey(vocabularyParts)}|forms:${grammarSelectionKey(formFilters)}|charts:${grammarSelectionKey(chartFilters)}`;
   const hasDirectionalCards = materials.has("vocabulary") || materials.has("grammar-forms");
+  const formAll = grammarFiltersAreAll(formFilters);
+  const chartAll = grammarFiltersAreAll(chartFilters);
 
   function toggleMaterial(material: Material, checked: boolean) { setMaterials((current) => { const next = new Set(current); checked ? next.add(material) : next.delete(material); return next; }); }
 
   return <main className="page-shell study-page latin-page">
     <div className="study-page-heading">
       <div><p className="eyebrow">Vocabulary · forms · whole charts</p><h1>Latin</h1></div>
-      <p>Mix Dickinson vocabulary with any Henle Part 1 forms you want: nouns, adjectives, adverbs, numerals, pronouns, and verbs. Each Henle source has its own compact drop-down for further narrowing.</p>
+      <p>Choose whole sources from their closed rows, or open a chevron only when you want to narrow them. Henle Part 1 includes nouns, adjectives, adverbs, numerals, pronouns, and verbs.</p>
     </div>
     {!user && <div className="guest-banner"><span>You are studying as a guest. Progress stays on this device.</span><Link to="/account">Sign in to sync</Link></div>}
     {(vocabularyError || henleError) && <div className="inline-alert">{vocabularyError ?? henleError}</div>}
 
-    <StudyFilterMenu summary={`${selectedCards.length.toLocaleString()} cards in the current pool${henleLoading && needsGrammar ? " · loading grammar…" : ""}`} detail="Selections combine rather than replace one another. Open only the source you want to customize; Henle Grammar Forms and Henle Whole Charts keep independent filters.">
-      <FilterSection title="Study material" description="Choose one or several sources. Henle options stay collapsed until you need them.">
-        <FilterCheckbox label="Dickinson vocabulary" count={vocabularyDeck?.cards.length ?? 997} checked={materials.has("vocabulary")} onChange={(checked) => toggleMaterial("vocabulary", checked)} hint="Frequency-ranked; top 100 then 25-card unlocks" />
-        <FilterCheckbox label="Henle grammar forms" count={2_062} checked={materials.has("grammar-forms")} onChange={(checked) => toggleMaterial("grammar-forms", checked)} hint="Individual forms from Part 1" />
-        <FilterCheckbox label="Henle whole charts" count={henle?.chartDeck.cards.length ?? 248} checked={materials.has("grammar-charts")} onChange={(checked) => toggleMaterial("grammar-charts", checked)} hint="Complete paradigms; always prompted forward" />
-        {materials.has("grammar-forms") && (henle ? <HenleSourceFilterDisclosure title="Henle grammar forms" cards={henle.individualDeck.cards} filters={formFilters} setFilters={setFormFilters} /> : <div className="filter-disclosure"><div className="filter-disclosure-body">Loading Henle grammar forms…</div></div>)}
-        {materials.has("grammar-charts") && (henle ? <HenleSourceFilterDisclosure title="Henle whole charts" cards={henle.chartDeck.cards} filters={chartFilters} setFilters={setChartFilters} /> : <div className="filter-disclosure"><div className="filter-disclosure-body">Loading Henle whole charts…</div></div>)}
-      </FilterSection>
+    <StudyFilterMenu summary={`${selectedCards.length.toLocaleString()} cards in the current pool${henleLoading && needsGrammar ? " · loading grammar…" : ""}`} detail="Each source is one vertical drop-down. The checkbox on the closed heading selects everything below it; partial selections show a mixed state.">
+      <FilterDisclosure
+        title="Latin Vocabulary (Dickinson)"
+        count={vocabularyDeck?.cards.length ?? 997}
+        summary="Frequency-ranked · top 100, then 25-card unlocks"
+        checked={materials.has("vocabulary") && vocabularyState.checked}
+        mixed={materials.has("vocabulary") && !vocabularyState.checked}
+        onCheckedChange={(checked) => {
+          toggleMaterial("vocabulary", checked);
+          if (checked) setVocabularyParts(null);
+        }}
+      >
+        {materials.has("vocabulary") && vocabularyDeck ? <FilterDisclosure
+          title="Parts of speech"
+          summary={`${vocabularyState.selectedCount} of ${allVocabularyParts.length} selected`}
+          checked={vocabularyState.checked}
+          mixed={vocabularyState.mixed}
+          onCheckedChange={(checked) => setVocabularyParts(checked ? null : new Set())}
+          nested
+        >
+          <FilterSection title="Vocabulary categories" description="Select an entire part-of-speech family from its parent row, or open the family for narrower types.">
+            {[...vocabularyGroups.entries()].map(([family, items]) => {
+              const values = items.map((item) => item.value);
+              const state = selectionState(vocabularyParts, values);
+              const count = items.reduce((sum, item) => sum + item.count, 0);
+              if (items.length === 1) {
+                const item = items[0];
+                return <FilterCheckbox key={family} label={family} count={count} checked={selected(vocabularyParts, item.value)} onChange={(checked) => setVocabularyParts((current) => setValues(current, allVocabularyParts, [item.value], checked))} />;
+              }
+              return <FilterDisclosure
+                key={family}
+                title={family}
+                count={count}
+                summary={`${state.selectedCount} of ${values.length} types selected`}
+                checked={state.checked}
+                mixed={state.mixed}
+                onCheckedChange={(checked) => setVocabularyParts((current) => setValues(current, allVocabularyParts, values, checked))}
+                nested
+              >
+                <FilterSection title={family} description={`Choose all ${family.toLowerCase()} vocabulary or only specific types.`}>
+                  {items.map((item) => <FilterCheckbox key={item.value} label={item.value.includes(":") ? item.value.split(":").slice(1).join(":").trim() : item.value} count={item.count} checked={selected(vocabularyParts, item.value)} onChange={(checked) => setVocabularyParts((current) => setValues(current, allVocabularyParts, [item.value], checked))} />)}
+                </FilterSection>
+              </FilterDisclosure>;
+            })}
+          </FilterSection>
+        </FilterDisclosure> : <p className="filter-menu-detail">Check the parent box to select all Latin vocabulary. Then open this menu only if you want to narrow it.</p>}
+      </FilterDisclosure>
 
-      {materials.has("vocabulary") && vocabularyDeck && <FilterSection title="Vocabulary · parts of speech" description="Leave all selected for the full Dickinson core, or narrow to one or several families." onAll={() => setVocabularyParts(null)} onNone={() => setVocabularyParts(new Set())}>
-        <div className="filter-subsection-stack">
-          {[...vocabularyGroups.entries()].map(([family, items]) => <div key={family}>
-            <div className="filter-subsection-heading"><span className="filter-subsection-label">{family}</span><div className="filter-actions"><button type="button" onClick={() => setVocabularyParts((current) => setValues(current, allVocabularyParts, items.map((item) => item.value), true))}>All</button><button type="button" onClick={() => setVocabularyParts((current) => setValues(current, allVocabularyParts, items.map((item) => item.value), false))}>None</button></div></div>
-            <div className="filter-option-grid">{items.map((item) => <FilterCheckbox key={item.value} label={item.value.includes(":") ? item.value.split(":").slice(1).join(":").trim() : item.value} count={item.count} checked={selected(vocabularyParts, item.value)} onChange={(checked) => setVocabularyParts((current) => setValues(current, allVocabularyParts, [item.value], checked))} nested={items.length > 1} />)}</div>
-          </div>)}
-        </div>
-      </FilterSection>}
+      <FilterDisclosure
+        title="Henle Grammar Forms"
+        count={2_062}
+        summary="Individual Part 1 forms · Forward and Reverse"
+        checked={materials.has("grammar-forms") && formAll}
+        mixed={materials.has("grammar-forms") && !formAll}
+        onCheckedChange={(checked) => {
+          toggleMaterial("grammar-forms", checked);
+          if (checked) setFormFilters(blankGrammarSelections());
+        }}
+      >
+        {materials.has("grammar-forms") ? (henle ? <HenleSourceFilters cards={henle.individualDeck.cards} filters={formFilters} setFilters={setFormFilters} /> : <div className="filter-disclosure-body">Loading Henle grammar forms…</div>) : <p className="filter-menu-detail">Check the parent box to select all Henle grammar forms. Open the menu only to narrow them.</p>}
+      </FilterDisclosure>
+
+      <FilterDisclosure
+        title="Henle Whole Charts"
+        count={henle?.chartDeck.cards.length ?? 248}
+        summary="Complete paradigms · independent chart mastery"
+        checked={materials.has("grammar-charts") && chartAll}
+        mixed={materials.has("grammar-charts") && !chartAll}
+        onCheckedChange={(checked) => {
+          toggleMaterial("grammar-charts", checked);
+          if (checked) setChartFilters(blankGrammarSelections());
+        }}
+      >
+        {materials.has("grammar-charts") ? (henle ? <HenleSourceFilters cards={henle.chartDeck.cards} filters={chartFilters} setFilters={setChartFilters} /> : <div className="filter-disclosure-body">Loading Henle whole charts…</div>) : <p className="filter-menu-detail">Check the parent box to select all Henle whole charts. Open the menu only to narrow them.</p>}
+      </FilterDisclosure>
     </StudyFilterMenu>
 
     {vocabularyDeck ? <MultiSourceStudySession deck={virtualDeck} sources={sources} resetKey={resetKey} direction={direction} onDirectionChange={hasDirectionalCards ? setDirection : undefined} directionLabels={{ forward: "Forward", reverse: "Reverse" }} cardMeta={(card, source) => source.id === "vocabulary" ? `Entry ${Number(card.metadata?.deckPosition ?? 0)} of ${vocabularyDeck.cards.length} · Dickinson rank ${card.rank}` : `Rule ${card.rank}`} priorityPrompt={(card, copy) => String(card.metadata?.studySource) === "grammar-chart" ? `${card.front} · Complete chart` : copy.prompt} renderFront={(card, copy, source) => {

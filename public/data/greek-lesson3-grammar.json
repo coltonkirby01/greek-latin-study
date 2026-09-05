@@ -1,0 +1,13 @@
+[
+  { "id": "lesson3-g-ind-1s", "category": "Present Active Indicative", "form": "παιδεύω", "prompt": "Present active indicative — 1st person singular of παιδεύω", "identification": "1st person singular, present active indicative", "ending": "-ω" },
+  { "id": "lesson3-g-ind-2s", "category": "Present Active Indicative", "form": "παιδεύεις", "prompt": "Present active indicative — 2nd person singular of παιδεύω", "identification": "2nd person singular, present active indicative", "ending": "-εις" },
+  { "id": "lesson3-g-ind-3s", "category": "Present Active Indicative", "form": "παιδεύει", "prompt": "Present active indicative — 3rd person singular of παιδεύω", "identification": "3rd person singular, present active indicative", "ending": "-ει" },
+  { "id": "lesson3-g-ind-1p", "category": "Present Active Indicative", "form": "παιδεύομεν", "prompt": "Present active indicative — 1st person plural of παιδεύω", "identification": "1st person plural, present active indicative", "ending": "-ομεν" },
+  { "id": "lesson3-g-ind-2p", "category": "Present Active Indicative", "form": "παιδεύετε", "prompt": "Present active indicative — 2nd person plural of παιδεύω", "identification": "2nd person plural, present active indicative", "ending": "-ετε" },
+  { "id": "lesson3-g-ind-3p", "category": "Present Active Indicative", "form": "παιδεύουσι(ν)", "prompt": "Present active indicative — 3rd person plural of παιδεύω", "identification": "3rd person plural, present active indicative", "ending": "-ουσι(ν)" },
+  { "id": "lesson3-g-inf", "category": "Present Active Infinitive", "form": "παιδεύειν", "prompt": "Present active infinitive of παιδεύω", "identification": "present active infinitive", "ending": "-ειν" },
+  { "id": "lesson3-g-imp-2s", "category": "Present Active Imperative", "form": "παίδευε", "prompt": "Present active imperative — 2nd person singular of παιδεύω", "identification": "2nd person singular, present active imperative", "ending": "-ε" },
+  { "id": "lesson3-g-imp-3s", "category": "Present Active Imperative", "form": "παιδευέτω", "prompt": "Present active imperative — 3rd person singular of παιδεύω", "identification": "3rd person singular, present active imperative", "ending": "-έτω" },
+  { "id": "lesson3-g-imp-2p", "category": "Present Active Imperative", "form": "παιδεύετε", "prompt": "Present active imperative — 2nd person plural of παιδεύω", "identification": "2nd person plural, present active imperative", "ending": "-ετε" },
+  { "id": "lesson3-g-imp-3p", "category": "Present Active Imperative", "form": "παιδευόντων", "prompt": "Present active imperative — 3rd person plural of παιδεύω", "identification": "3rd person plural, present active imperative", "ending": "-όντων" }
+]

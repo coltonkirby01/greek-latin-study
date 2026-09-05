@@ -11,21 +11,27 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - The public study navigation has one Greek app and one Latin app. Do not reintroduce separate Henle, vocabulary, grammar, or Decks apps/pages in the primary navigation.
 - `/henle` is a compatibility redirect into `/latin`; Henle grammar is studied inside the Latin app.
 - Individual imported/custom deck routes under `/decks/:slug` may remain addressable, but there is no standalone `/decks` library page or Decks navigation item.
-- Greek card-type filtering is multi-select: uppercase, lowercase, punctuation, and accent marks can be studied singly or in any combination.
-- Greek filtering is organized by lesson: Lesson 1 contains Alphabet and Punctuation; Alphabet expands to independent Uppercase and Lowercase choices. Lesson 2 contains Accent Marks. Keep this hierarchy compact with nested disclosures rather than reverting to a flat category list.
-- Latin is a unified study surface. Dickinson vocabulary, Henle individual forms, and Henle whole charts can be selected singly or combined in one study pool.
+- Greek and Latin selectors use a vertical accordion/drop-down hierarchy, not dense side-by-side settings panels.
+- Every expandable filter heading has a checkbox visible while the disclosure is closed. That parent checkbox selects or clears everything beneath the heading; users must not have to open a dropdown merely to choose all or none. Partially selected parents show an indeterminate/mixed state.
+- Greek has top-level quick selectors for All Vocabulary and All Grammar; narrower lesson selectors remain independently adjustable.
+- Greek filtering is organized by lesson. Lesson 1 contains Alphabet/Vocabulary and Punctuation; Alphabet/Vocabulary expands to independent Uppercase and Lowercase choices. Lesson 2 contains Accent Marks.
+- Greek Lesson 3 contains separate Vocabulary and Grammar headings. Lesson 3 Grammar currently contains Present Active Indicative, Present Active Infinitive, and Present Active Imperative from the παιδεύω paradigm. Keep Lesson 3 vocabulary progress separate from paradigm/form progress even when both are mixed in one session.
+- Greek card types remain multi-select. Lesson material, vocabulary, grammar, punctuation, accents, and future lesson categories may be combined in one adaptive session without merging their stored histories.
+- Latin is a unified study surface. There is exactly one Latin vocabulary source/control: the Dickinson Latin Core Vocabulary. Do not create separate "Latin vocabulary" and "Dickinson vocabulary" boxes for the same source.
+- Latin vocabulary, Henle individual forms, and Henle whole charts can be selected singly or combined in one study pool.
+- Henle Grammar Forms and Henle Whole Charts each have their own compact vertical dropdown and independent filter state, so a user may choose different Part I sections for forms and charts in the same mixed session.
 - Latin grammar filters are hierarchical and composable. Broad sections can be narrowed by verb family, voice, and form/mood (for example Verbs + Active Voice + Indicative).
 - Henle Part I grammatical sections are Nouns, Adjectives, Adverbs, Numerals, Pronouns, and Verbs. Do not reduce the Henle selector to verbs only.
-- Henle Grammar Forms and Henle Whole Charts each have their own compact nested selection controls and independent filter state, so a user may choose different Part I sections for forms and charts in the same mixed session.
 - Filters should narrow the cards presented without erasing or replacing stored study history.
 - Changing a study filter or direction must return the session to the Start gate before timing resumes.
 
 ## Built-in deck invariants
 
-- Built-in source counts are Greek 55, Dickinson Latin 997, Henle 2,062 unique cards across 331 rules, and 248 whole-chart groups.
+- Built-in source counts are Greek Lessons 1–2: 55 cards; Greek Lesson 3 Vocabulary: 11 cards; Greek Lesson 3 Grammar: 11 form cards; Dickinson Latin: 997; Henle: 2,062 unique cards across 331 rules; Henle Whole Charts: 248 groups.
+- Greek Lesson 3 grammar categories are Present Active Indicative, Present Active Infinitive, and Present Active Imperative unless the course source is deliberately expanded.
 - Any deck-data change must update and pass the source-count tests deliberately.
 - Preserve spelling, accents, breathing marks, macrons, principal parts, gender, and other source forms unless the task explicitly corrects source data.
-- Existing source decks remain independently persisted even when the Latin UI interleaves cards from multiple sources.
+- Existing source decks remain independently persisted even when Greek or Latin UI sessions interleave cards from multiple sources.
 - Dickinson's staged introduction remains 100 cards initially and 25 additional cards at a time; filtering or mixing with grammar must not silently expose locked Dickinson cards.
 
 ## Study directions and progress
@@ -34,7 +40,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Forward and Reverse are logically separate study directions even when they use the same underlying card.
 - Preserve per-direction statistics and scheduling.
 - A card's displayed flip/front-back behavior must not collapse the logical distinction between Forward and Reverse.
-- Mixed Latin sessions may rank cards from multiple persisted sources together, but each review must save to its original deck and study mode.
+- Mixed Greek and Latin sessions may rank cards from multiple persisted sources together, but each review must save to its original deck and study mode.
 
 ## Review and mastery behavior
 
@@ -87,6 +93,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - New controls should work in both light and dark themes through the existing CSS variables.
 - Do not expose answers in previews, priority lists, metadata, aria-labels, or other hidden/accessibility text where the answer is meant to remain concealed.
 - Make the flexibility of Greek and Latin study filters obvious in page/home descriptions; users should not have to discover by accident that categories can be combined.
+- On the home page, Greek and Latin use written display titles rather than generic A/Α glyphs. Keep the Greek and Latin count/status badge area blank unless the user explicitly asks to restore a badge.
 
 ## Performance
 
