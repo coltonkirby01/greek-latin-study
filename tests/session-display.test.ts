@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { currentSessionDisplayName, mostRecentResumableSession } from "../src/features/study/multi-source-study-session";
+import { createEnvelope } from "../src/features/study/engine";
+import { currentSessionDisplayName, mostRecentResumableSession, sessionWasDeleted } from "../src/features/study/multi-source-study-session";
 import type { ManagedSession } from "../src/features/study/session-management";
 
 describe("current study session display name", () => {
@@ -32,5 +33,14 @@ describe("default session selection", () => {
       { id: "legacy-Latin-0", language: "Latin", sources: ["Dickinson Vocabulary"], startedAt: 30, lastReviewedAt: 500, reviews: 4, inferred: true },
     ];
     expect(mostRecentResumableSession(sessions)).toBeNull();
+  });
+
+  it("detects when an active session was deleted in any loaded language envelope", () => {
+    const latin = createEnvelope("dickinson-latin-core", 1);
+    latin.deletedSessionIds = ["deleted-session"];
+    const henle = createEnvelope("henle-part1-forms", 1);
+
+    expect(sessionWasDeleted({ "dickinson-latin-core": latin, "henle-part1-forms": henle }, "deleted-session")).toBe(true);
+    expect(sessionWasDeleted({ "dickinson-latin-core": latin, "henle-part1-forms": henle }, "still-active")).toBe(false);
   });
 });
