@@ -26,6 +26,16 @@ export function FilterSection({ title, description, onAll, onNone, children }: {
   </section>;
 }
 
+export function FilterDisclosure({ title, summary, children, nested = false }: { title: string; summary?: string; children: ReactNode; nested?: boolean }) {
+  return <details className={`filter-disclosure ${nested ? "is-nested" : ""}`}>
+    <summary>
+      <span className="filter-disclosure-copy"><strong>{title}</strong>{summary && <small>{summary}</small>}</span>
+      <ChevronDown className="filter-disclosure-chevron" aria-hidden="true" />
+    </summary>
+    <div className="filter-disclosure-body">{children}</div>
+  </details>;
+}
+
 export function FilterCheckbox({ label, checked, onChange, count, disabled = false, nested = false, hint }: { label: string; checked: boolean; onChange: (checked: boolean) => void; count?: number; disabled?: boolean; nested?: boolean; hint?: string }) {
   return <label className={`filter-checkbox ${nested ? "is-nested" : ""} ${disabled ? "is-disabled" : ""}`}>
     <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
