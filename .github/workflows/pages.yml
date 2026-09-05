@@ -5,12 +5,6 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  # GitHub's legacy branch publisher cancels concurrent workflows. Triggering
-  # again after it completes guarantees the compiled artifact is deployed.
-  workflow_run:
-    workflows: ["pages build and deployment"]
-    types: [completed]
-    branches: [main]
 
 permissions:
   contents: read
@@ -26,12 +20,9 @@ concurrency:
 
 jobs:
   check:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -55,7 +46,6 @@ jobs:
     needs: check
     steps:
       - name: Wait for any legacy Pages deployment
-        if: github.event_name != 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

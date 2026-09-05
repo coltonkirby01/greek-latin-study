@@ -173,7 +173,7 @@ The Edge Function remains inactive until an owner-approved provider is selected.
 
 The `pages.yml` workflow runs tests and a production build for every pull request. A push to `main` additionally uploads `dist` and deploys GitHub Pages. `build:pages` sets the correct `/greek-latin-study/` base path, and the post-build script creates `404.html` so direct client routes work on Pages.
 
-The repository originally used legacy branch publishing. Until the owner changes **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, that publisher can cancel a concurrent custom build. The workflow therefore also runs after the legacy publisher completes, then replaces its output with the compiled artifact. This prevents raw Vite source from remaining in production. Once the source is set to GitHub Actions, ordinary push deployments continue normally and the legacy completion trigger simply stops firing.
+The repository originally used legacy branch publishing. Until the owner changes **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, the compiled deploy job waits for that legacy job to finish and then replaces its output. Branch-specific concurrency labels keep pull-request checks from cancelling the live `main` deployment. Once the source is set to GitHub Actions, the same workflow continues normally and the legacy wait exits immediately.
 
 Recommended branch practice:
 
