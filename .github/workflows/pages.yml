@@ -13,8 +13,6 @@ permissions:
   id-token: write
 
 concurrency:
-  # Keep live main deployments independent from pull-request checks so
-  # frontend work cannot cancel the production Pages deployment.
   group: pages-custom-${{ github.ref }}
   cancel-in-progress: true
 
@@ -28,6 +26,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Dependency audit report
+        run: npm audit --json || true
       - run: npm test
       - run: npm run build:pages
       - if: github.event_name != 'pull_request'
