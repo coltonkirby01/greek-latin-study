@@ -8,13 +8,17 @@ const people = ["First", "Second", "Third"];
 type AnswerKind = "Stem" | "Ending" | null;
 function answerKind(item: HenleSourceCard | undefined): AnswerKind {
   if (!item) return null;
-  if (item.verb_form_group === "Stems" || item.tags.includes("stems")) return "Stem";
-  if (item.verb_form_group === "Personal Endings" || item.tags.includes("endings")) return "Ending";
+  const markers = `${item.verb_form_group ?? ""} ${item.tags.join(" ")}`.toLowerCase();
+  if (markers.includes("stem")) return "Stem";
+  if (markers.includes("ending")) return "Ending";
   return null;
 }
-const answer = (item: HenleSourceCard | undefined, revealed: boolean) => revealed
-  ? <span className="revealed-form">{answerKind(item) ? <><strong>{answerKind(item)}:</strong> </> : null}{item?.answer || "—"}</span>
-  : <span className="chart-blank" aria-label="blank answer" />;
+function answer(item: HenleSourceCard | undefined, revealed: boolean) {
+  if (!revealed) return <span className="chart-blank" aria-label="blank answer" />;
+  const kind = answerKind(item);
+  if (!kind) return <span className="revealed-form">{item?.answer || "—"}</span>;
+  return <span className="revealed-form" style={{ display: "inline-flex", alignItems: "baseline", gap: "0.45rem", padding: "0.2rem 0.4rem", border: "1px solid var(--line)", borderRadius: "6px", background: "var(--surface)" }}><strong style={{ fontSize: "0.72em", letterSpacing: "0.055em", textTransform: "uppercase" }}>{kind}:</strong><span>{item?.answer || "—"}</span></span>;
+}
 
 function Declension({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
   const parsed = items.map((item) => { const match = item.prompt.match(/^(Nominative|Genitive|Dative|Accusative|Ablative|Vocative) (Masculine|Feminine|Neuter) (Singular|Plural)$/); return match ? { item, case: match[1], gender: match[2], number: match[3] } : null; });
@@ -38,7 +42,7 @@ function PrincipalParts({ items, revealed }: { items: HenleSourceCard[]; reveale
 
 function Generic({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
   const kinds = [...new Set(items.map(answerKind).filter(Boolean))] as Exclude<AnswerKind, null>[];
-  const heading = kinds.length === 1 ? kinds[0] : "Form";
+  const heading = kinds.length === 1 ? `${kinds[0]} answers` : kinds.length > 1 ? "Stem / Ending" : "Form";
   return <div className="chart-scroll"><table className="henle-chart"><thead><tr><th>Prompt</th><th>{heading}</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><th>{item.prompt}</th><td>{answer(item, revealed)}</td></tr>)}</tbody></table></div>;
 }
 
