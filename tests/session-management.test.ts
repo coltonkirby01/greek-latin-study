@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEnvelope, createModeState, presentCard, recordReview } from "../src/features/study/engine";
-import { collectManagedSessions, deleteSessionFromEnvelope, renameSessionInEnvelope } from "../src/features/study/session-management";
+import { automaticManagedSessionName, collectManagedSessions, deleteSessionFromEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
 import type { StudyCard } from "../src/features/study/types";
 
 const cards: StudyCard[] = [
@@ -26,6 +26,19 @@ describe("session management", () => {
     const sessions = collectManagedSessions({ "dickinson-latin-core": envelopeWithTwoSessions() });
     expect(sessions.map((session) => session.id).sort()).toEqual(["session-a", "session-b"]);
     expect(sessions[0].language).toBe("Latin");
+  });
+
+  it("uses the latest stored custom name when historical reviews contain conflicting names", () => {
+    expect(sessionCustomNameFromReviews([
+      { reviewedAt: 10, sessionName: "Old name" },
+      { reviewedAt: 30, sessionName: "Current name" },
+      { reviewedAt: 20, sessionName: "Middle name" },
+    ])).toBe("Current name");
+  });
+
+  it("formats two-source automatic names consistently with Stats", () => {
+    const name = automaticManagedSessionName({ id: "s", language: "Latin", sources: ["Dickinson Vocabulary", "Henle Grammar Forms"], startedAt: 1, lastReviewedAt: 2, reviews: 2 }, { format: () => "DATE" } as Intl.DateTimeFormat);
+    expect(name).toBe("Latin · Dickinson Vocabulary + Henle Grammar Forms · DATE");
   });
 
   it("persists a custom name on every review in the session", () => {

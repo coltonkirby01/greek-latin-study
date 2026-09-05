@@ -39,7 +39,7 @@ export function AccountSessionManager({ user }: { user: User }) {
       const next = Object.fromEntries(loaded.map(([deckId, result]) => [deckId, result.envelope])) as Record<string, DeckProgressEnvelope | null>;
       setEnvelopes(next);
       const sessions = collectManagedSessions(next);
-      setDraftNames(Object.fromEntries(sessions.map((session) => [session.id, displayManagedSessionName(session)])));
+      setDraftNames(Object.fromEntries(sessions.map((session) => [session.id, session.name ?? ""])));
       setLoading(false);
     }).catch((reason) => {
       if (!active) return;
@@ -67,6 +67,7 @@ export function AccountSessionManager({ user }: { user: User }) {
       }
       await Promise.all(saves);
       setEnvelopes(nextEnvelopes);
+      setDraftNames((current) => ({ ...current, [session.id]: name }));
       setMessage(`Renamed session to “${name}”.`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusySessionId(null); }
@@ -101,23 +102,25 @@ export function AccountSessionManager({ user }: { user: User }) {
   return <section className="account-activity panel-surface account-session-manager">
     <p className="eyebrow">Session management</p>
     <h2>Rename, continue, or delete study sessions</h2>
-    <p className="form-help">Session names appear in Greek, Latin, and Stats. Deleting a session permanently removes those reviews from your history and can lower your proficiency score. It does not re-lock Dickinson vocabulary you already reached.</p>
+    <p className="form-help">Account is the single place to manage session names. Custom names automatically appear in Greek, Latin, and Stats and replace the automatic session name everywhere.</p>
+    <p className="form-help">Deleting a session permanently removes those reviews from your history and can lower your proficiency score. It does not re-lock Dickinson vocabulary you already reached.</p>
     {message && <div className="success-alert">{message}</div>}
     {error && <div className="inline-alert">{error}</div>}
     {loading ? <p className="form-help">Loading sessions…</p> : sessions.length ? <div className="account-session-list">
       {sessions.map((session) => {
         const currentName = displayManagedSessionName(session);
-        const draftName = draftNames[session.id] ?? currentName;
+        const draftName = draftNames[session.id] ?? session.name ?? "";
         const busy = busySessionId === session.id;
+        const hasCustomName = Boolean(session.name?.trim());
         return <article className="account-session-row" key={session.id}>
           <div className="account-session-copy">
             <span className="eyebrow">{session.language}</span>
             <strong>{currentName}</strong>
-            <small>{session.sources.join(" + ")} · {sessionDateFormatter.format(session.startedAt)} · {session.reviews} review{session.reviews === 1 ? "" : "s"}</small>
+            <small>{hasCustomName ? `${session.reviews} review${session.reviews === 1 ? "" : "s"}` : `${session.sources.join(" + ")} · ${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`}</small>
           </div>
-          <div className="auth-form account-session-name-field"><label><span>Custom session name</span><input value={draftName} maxLength={80} onChange={(event) => setDraftNames((current) => ({ ...current, [session.id]: event.target.value }))} /></label></div>
+          <div className="auth-form account-session-name-field"><label><span>Custom session name</span><input value={draftName} maxLength={80} placeholder="Optional custom name" onChange={(event) => setDraftNames((current) => ({ ...current, [session.id]: event.target.value }))} /></label></div>
           <div className="account-session-actions">
-            <button className="secondary-button" type="button" disabled={busy || !draftName.trim() || draftName.trim() === currentName} onClick={() => void saveName(session)}>{busy ? "Saving…" : "Save name"}</button>
+            <button className="secondary-button" type="button" disabled={busy || !draftName.trim() || draftName.trim() === (session.name?.trim() ?? "")} onClick={() => void saveName(session)}>{busy ? "Saving…" : "Save name"}</button>
             <Link className="secondary-button" to={continueHref(session)}>Continue</Link>
             <button className="secondary-button account-delete-session" type="button" disabled={busy} onClick={() => void deleteSession(session)}><Trash2 aria-hidden="true" /> Delete</button>
           </div>

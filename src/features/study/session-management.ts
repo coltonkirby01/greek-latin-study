@@ -21,7 +21,7 @@ function deckLanguage(deckId: string): "Greek" | "Latin" {
 }
 
 function sourceLabel(deckId: string, studyKey: string) {
-  if (deckId === "greek-i") return "Lessons 1–2 Grammar";
+  if (deckId === "greek-i") return "Lessons 1–2";
   if (deckId === "alpha-omega-lesson3-vocab") return "Lesson 3 Vocabulary";
   if (deckId === "alpha-omega-lesson3-grammar") return "Lesson 3 Grammar";
   if (deckId === "dickinson-latin-core") return "Dickinson Vocabulary";
@@ -29,8 +29,19 @@ function sourceLabel(deckId: string, studyKey: string) {
   return deckId;
 }
 
+export function sessionCustomNameFromReviews(reviews: Array<Pick<ReviewRecord, "sessionName" | "reviewedAt">>) {
+  let latest: { name: string; reviewedAt: number } | null = null;
+  for (const review of reviews) {
+    const name = review.sessionName?.trim();
+    if (!name) continue;
+    if (!latest || review.reviewedAt >= latest.reviewedAt) latest = { name, reviewedAt: review.reviewedAt };
+  }
+  return latest?.name;
+}
+
 export function collectManagedSessions(envelopes: Record<string, DeckProgressEnvelope | null>) {
   const sessions = new Map<string, ManagedSession>();
+  const namedReviews = new Map<string, Array<Pick<ReviewRecord, "sessionName" | "reviewedAt">>>();
   for (const [deckId, envelope] of Object.entries(envelopes)) {
     if (!envelope) continue;
     const language = deckLanguage(deckId);
@@ -46,7 +57,6 @@ export function collectManagedSessions(envelopes: Record<string, DeckProgressEnv
             existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
             existing.reviews += 1;
             if (!existing.sources.includes(source)) existing.sources.push(source);
-            if (review.sessionName?.trim()) existing.name = review.sessionName.trim();
           } else {
             sessions.set(review.sessionId, {
               id: review.sessionId,
@@ -55,18 +65,24 @@ export function collectManagedSessions(envelopes: Record<string, DeckProgressEnv
               startedAt,
               lastReviewedAt: review.reviewedAt,
               reviews: 1,
-              name: review.sessionName?.trim() || undefined,
             });
+          }
+          if (review.sessionName?.trim()) {
+            namedReviews.set(review.sessionId, [...(namedReviews.get(review.sessionId) ?? []), review]);
           }
         }
       }
     }
   }
+  for (const [sessionId, reviews] of namedReviews) {
+    const session = sessions.get(sessionId);
+    if (session) session.name = sessionCustomNameFromReviews(reviews);
+  }
   return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt);
 }
 
 export function automaticManagedSessionName(session: ManagedSession, formatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })) {
-  const focus = session.sources.length === 1 ? session.sources[0] : session.sources.length ? "Mixed study" : "Study";
+  const focus = session.sources.length === 1 ? session.sources[0] : session.sources.length === 2 ? session.sources.join(" + ") : "Mixed study";
   return `${session.language} · ${focus} · ${formatter.format(session.startedAt)}`;
 }
 
