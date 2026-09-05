@@ -6,6 +6,9 @@ const genders = ["Masculine", "Feminine", "Neuter"];
 const people = ["First", "Second", "Third"];
 
 type AnswerKind = "Stem" | "Ending" | null;
+type BadgeKind = "Stem" | "Stem / base" | "Ending" | "Complete form";
+type PersonalParts = { base: string; ending: string };
+
 function answerKind(item: HenleSourceCard | undefined): AnswerKind {
   if (!item) return null;
   const markers = `${item.verb_form_group ?? ""} ${item.tags.join(" ")} ${item.prompt}`.toLowerCase();
@@ -14,7 +17,34 @@ function answerKind(item: HenleSourceCard | undefined): AnswerKind {
   return null;
 }
 
-const badgeStyle = (kind: "Stem" | "Ending" | "Complete form") => ({
+function personalEndingParts(item: HenleSourceCard | undefined): PersonalParts | null {
+  if (!item || item.answer.includes(" ") || item.answer.includes(",")) return null;
+  if (/Indicative Perfect/i.test(item.title)) return null;
+  const match = item.prompt.match(/^(First|Second|Third) Person (Singular|Plural)$/);
+  if (!match) return null;
+  const key = `${match[1]} ${match[2]}`;
+  const passive = /Passive/i.test(item.verb_voice_group ?? "") || /Deponent/i.test(item.verb_voice_group ?? "") || /Passive/i.test(item.title);
+  const endings: Record<string, string[]> = passive ? {
+    "First Singular": ["or", "r"],
+    "Second Singular": ["ris"],
+    "Third Singular": ["tur"],
+    "First Plural": ["mur"],
+    "Second Plural": ["minī"],
+    "Third Plural": ["ntur"],
+  } : {
+    "First Singular": ["ō", "m"],
+    "Second Singular": ["s"],
+    "Third Singular": ["t"],
+    "First Plural": ["mus"],
+    "Second Plural": ["tis"],
+    "Third Plural": ["nt"],
+  };
+  const ending = (endings[key] ?? []).sort((a, b) => b.length - a.length).find((candidate) => item.answer.endsWith(candidate));
+  if (!ending || item.answer.length <= ending.length) return null;
+  return { base: item.answer.slice(0, -ending.length), ending };
+}
+
+const badgeStyle = (kind: BadgeKind) => ({
   display: "inline-flex",
   alignItems: "center",
   border: "1px solid var(--line)",
@@ -28,13 +58,20 @@ const badgeStyle = (kind: "Stem" | "Ending" | "Complete form") => ({
   background: kind === "Complete form" ? "var(--surface)" : "var(--surface-raised, var(--surface))",
 });
 
-function componentBadge(kind: "Stem" | "Ending" | "Complete form") {
-  return <span className={`henle-answer-kind ${kind.toLowerCase().replace(" ", "-")}`} style={badgeStyle(kind)}>{kind}</span>;
+function componentBadge(kind: BadgeKind) {
+  const className = kind.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "");
+  return <span className={`henle-answer-kind ${className}`} style={badgeStyle(kind)}>{kind}</span>;
 }
 
 function answer(item: HenleSourceCard | undefined, revealed: boolean) {
   if (!revealed) return <span className="chart-blank" aria-label="blank answer" />;
   const kind = answerKind(item);
+  const parts = !kind ? personalEndingParts(item) : null;
+  if (parts && item) return <span className="revealed-form-components" style={{ display: "grid", gap: "0.3rem", textAlign: "left" }}>
+    <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.38rem" }}>{componentBadge("Stem / base")}<strong>{parts.base}-</strong></span>
+    <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.38rem" }}>{componentBadge("Ending")}<strong>-{parts.ending}</strong></span>
+    <span style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "0.38rem" }}>{componentBadge("Complete form")}<strong>{item.answer}</strong></span>
+  </span>;
   return <span className="revealed-form" style={{ display: "inline-flex", alignItems: "center", flexWrap: "wrap", gap: "0.42rem" }}>
     {componentBadge(kind ?? "Complete form")}
     <strong>{item?.answer || "—"}</strong>
@@ -45,14 +82,20 @@ function ComponentGuide({ items, revealed }: { items: HenleSourceCard[]; reveale
   if (!revealed) return null;
   const stems = [...new Set(items.filter((item) => answerKind(item) === "Stem").map((item) => item.answer))];
   const endings = [...new Set(items.filter((item) => answerKind(item) === "Ending").map((item) => item.answer))];
-  const hasComponents = stems.length > 0 || endings.length > 0;
+  const splitForms = items.filter((item) => personalEndingParts(item));
+  const hasExplicitComponents = stems.length > 0 || endings.length > 0;
   return <div className="henle-component-guide" style={{ display: "grid", gap: "0.45rem", margin: "0.2rem 0 0.8rem", padding: "0.7rem 0.8rem", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--surface)" }}>
     <strong style={{ fontSize: "0.78rem", letterSpacing: "0.055em", textTransform: "uppercase" }}>How to read this answer</strong>
-    {hasComponents ? <>
-      {stems.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Stem")}<span><strong>Stem portion:</strong> {stems.join(", ")}</span></div>}
-      {endings.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Ending")}<span><strong>Ending portion:</strong> {endings.join(", ")}</span></div>}
-      <span style={{ fontSize: "0.84rem" }}>Rows marked <strong>Complete form</strong> show the combined form; stem and ending rows are identified separately rather than being presented as interchangeable full forms.</span>
-    </> : <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Complete form")}<span>This rule supplies completed forms rather than a separate stem or ending table. The answer is therefore labeled as a complete form, not as a stem or ending.</span></div>}
+    {hasExplicitComponents && <>
+      {stems.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Stem")}<span><strong>Henle stem:</strong> {stems.join(", ")}</span></div>}
+      {endings.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Ending")}<span><strong>Henle ending:</strong> {endings.join(", ")}</span></div>}
+    </>}
+    {splitForms.length > 0 && <div style={{ display: "grid", gap: "0.35rem" }}>
+      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Stem / base")}<span>The material before the personal ending. It can contain the verb stem plus a tense or mood sign, and surface vowel changes can alter the visible stem.</span></div>
+      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Ending")}<span>The personal ending is separated from the form base.</span></div>
+      <span style={{ fontSize: "0.84rem" }}>Each decomposable finite form below shows <strong>stem/form base + personal ending → complete form</strong>.</span>
+    </div>}
+    {!hasExplicitComponents && !splitForms.length && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Complete form")}<span>This rule does not supply a defensible stem/personal-ending split in the Henle data, so the completed form is shown without inventing one.</span></div>}
   </div>;
 }
 
