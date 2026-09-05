@@ -40,6 +40,25 @@ describe("session management", () => {
     expect(sessions[0].language).toBe("Latin");
   });
 
+  it("uses the same legacy 30-minute buckets that Stats uses", () => {
+    const sessions = collectManagedSessions({ "dickinson-latin-core": envelopeWithLegacyReview() });
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ id: "legacy-Latin-0", language: "Latin", inferred: true, reviews: 1 });
+    expect(sessions[0].reviewIds).toEqual(["legacy-r1"]);
+  });
+
+  it("does not cap the canonical session catalog at 25 sessions", () => {
+    const envelope = createEnvelope("dickinson-latin-core", 1);
+    let mode = createModeState("dickinson-latin-core", "forward", 997, { initialCount: 100, batchSize: 25 }, 1);
+    for (let index = 0; index < 30; index += 1) {
+      mode = presentCard(mode, cards[0], index * 10 + 2);
+      mode = recordReview(mode, cards[0], { id: `review-${index}`, result: "right", difficulty: "easy", responseTimeMs: 1_000, reviewedAt: index * 10 + 3, sessionId: `session-${index}`, sessionStartedAt: index * 10 + 1 });
+    }
+    envelope.modes.forward = mode;
+    envelope.updatedAt = mode.updatedAt;
+    expect(collectManagedSessions({ "dickinson-latin-core": envelope })).toHaveLength(30);
+  });
+
   it("uses the latest stored custom name when historical reviews contain conflicting names", () => {
     expect(sessionCustomNameFromReviews([
       { reviewedAt: 10, sessionName: "Old name" },
