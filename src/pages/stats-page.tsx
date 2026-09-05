@@ -5,8 +5,9 @@ import { loadGreekDeck, loadGreekLesson3GrammarDeck, loadGreekLesson3VocabularyD
 import { useAuth } from "../features/auth/auth-context";
 import { blankCardProgress, createModeState, directionalCopy, formatResponseTime, studyStats } from "../features/study/engine";
 import { loadHenle } from "../features/henle/henle-data";
-import { loadProgressEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";
+import { loadProgressEnvelope } from "../features/study/progress-repository";
 import { intrinsicCardDifficulty, scoredSession, userProficiencyScore } from "../features/study/scoring";
+import { sessionCustomNameFromReviews } from "../features/study/session-management";
 import type { CardProgress, DeckDefinition, DeckProgressEnvelope, ReviewRecord, StudyActivityKind, StudyCard, StudyDirection, StudyModeState } from "../features/study/types";
 import { useAsync } from "../hooks/use-async";
 import "./stats-page.css";
@@ -152,7 +153,7 @@ function summarizeSession(id: string, language: Language, reviews: ReviewEvent[]
   const startedAt = Math.min(...reviews.map((review) => review.sessionStartedAt ?? review.reviewedAt)), endedAt = Math.max(...reviews.map((review) => review.reviewedAt));
   const right = reviews.filter((review) => review.result === "right").length, easy = reviews.filter((review) => review.difficulty === "easy").length, medium = reviews.filter((review) => review.difficulty === "medium").length, hard = reviews.filter((review) => review.difficulty === "hard").length;
   const totalTimeMs = reviews.reduce((sum, review) => sum + review.responseTimeMs, 0);
-  const customName = reviews.find((review) => review.sessionName?.trim())?.sessionName?.trim();
+  const customName = sessionCustomNameFromReviews(reviews.map((review) => review.review));
   return {
     id, language, name: customName || automaticSessionName(language, reviews, startedAt), startedAt, endedAt, reviews: reviews.length, right, wrong: reviews.length - right, easy, medium, hard, totalTimeMs,
     averageTimeMs: totalTimeMs / reviews.length,
@@ -265,9 +266,6 @@ function weeklyTrendData(sessions: SessionSummary[]) {
 export function StatsPage() {
   const { user } = useAuth();
   const [selectedSessions, setSelectedSessions] = useState<Set<string> | null>(null);
-  const [sessionNameOverrides, setSessionNameOverrides] = useState<Record<string, string>>({});
-  const [renameError, setRenameError] = useState<string | null>(null);
-  const [savingSessionId, setSavingSessionId] = useState<string | null>(null);
 
   const { value, error, loading } = useAsync(async () => {
     const [greekFoundation, greekVocabulary, greekGrammar, latinVocabulary, henle] = await Promise.all([loadGreekDeck(), loadGreekLesson3VocabularyDeck(), loadGreekLesson3GrammarDeck(), loadLatinDeck(), loadHenle()]);
@@ -297,7 +295,7 @@ export function StatsPage() {
     });
     const { sessions, events } = buildSessions(rawEvents);
     events.sort((a, b) => b.reviewedAt - a.reviewedAt);
-    return { summaries, cards, sessions, events, envelopes };
+    return { summaries, cards, sessions, events };
   }, [user?.id]);
 
   const sessionIds = useMemo(() => value?.sessions.map((session) => session.id) ?? [], [value?.sessions]);
@@ -312,39 +310,13 @@ export function StatsPage() {
 
   if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;
 
-  function sessionName(session: SessionSummary) { return sessionNameOverrides[session.id] ?? session.name; }
+  function sessionName(session: SessionSummary) { return session.name; }
   function toggleSession(id: string, checked: boolean) {
     const next = selectedSessions === null ? new Set(sessionIds) : new Set(selectedSessions);
     if (checked) next.add(id); else next.delete(id);
     setSelectedSessions(next.size === sessionIds.length ? null : next);
   }
-  async function renameSession(session: SessionSummary) {
-    const snapshot = value;
-    if (!snapshot) return;
-    const requested = window.prompt("Rename this study session", sessionName(session));
-    const nextName = requested?.trim();
-    if (!nextName || nextName === sessionName(session)) return;
-    setRenameError(null); setSavingSessionId(session.id);
-    try {
-      const reviewIds = new Set(snapshot.events.filter((event) => event.scopeSessionId === session.id).map((event) => event.reviewId));
-      const now = Date.now(), saves: Promise<unknown>[] = [];
-      for (const envelope of Object.values(snapshot.envelopes)) {
-        if (!envelope) continue;
-        const nextEnvelope = structuredClone(envelope); let changed = false;
-        for (const mode of Object.values(nextEnvelope.modes)) {
-          let modeChanged = false;
-          for (const progress of Object.values(mode.cards)) {
-            progress.history = progress.history.map((review) => reviewIds.has(review.id) ? (modeChanged = true, changed = true, { ...review, sessionName: nextName }) : review);
-          }
-          if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
-        }
-        if (changed) { nextEnvelope.updatedAt = Math.max(nextEnvelope.updatedAt, now); saves.push(saveProgressEnvelope(nextEnvelope, user)); }
-      }
-      await Promise.all(saves);
-      setSessionNameOverrides((current) => ({ ...current, [session.id]: nextName }));
-    } catch (reason) { setRenameError(reason instanceof Error ? reason.message : String(reason)); }
-    finally { setSavingSessionId(null); }
-  }
+
 
   const greekRows = scopedRows.filter((row) => row.source.language === "Greek"), latinRows = scopedRows.filter((row) => row.source.language === "Latin");
   const greekCards = scopedCards.filter((card) => card.source.language === "Greek"), latinCards = scopedCards.filter((card) => card.source.language === "Latin");
@@ -358,7 +330,7 @@ export function StatsPage() {
       <div><p className="eyebrow">Continuous memory bank</p><h1>Study Stats</h1><p>Your complete Greek and Latin history is analyzed here. Use the session filter to compare one session, several sessions together, or your complete history.</p></div>
       <div className="stats-sync-note">{user ? <Cloud aria-hidden="true" /> : <Laptop aria-hidden="true" />}<span>{user ? "Showing your synced account progress" : "Showing guest progress saved on this device"}</span></div>
     </header>
-    {(error || renameError) && <div className="inline-alert">{error ?? renameError}</div>}
+    {error && <div className="inline-alert">{error}</div>}
 
     <section className="panel-surface stats-session-filter">
       <div className="stats-section-heading"><div><p className="eyebrow">Stats scope</p><h2>Choose sessions</h2><p>{filterLabel}. Every score, card analysis, trend, and review list below follows this selection.</p></div><div className="stats-filter-actions"><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(null)}>All</button><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(new Set())}>Clear</button></div></div>
@@ -375,8 +347,8 @@ export function StatsPage() {
       <TrendChart title="Recall time by week" subtitle="Average active front-side time" points={trends.time} format={(value) => `${value.toFixed(value < 10 ? 2 : 1)} s`} lowerIsBetter />
     </section>
 
-    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" sessionName={sessionName} onRenameSession={renameSession} savingSessionId={savingSessionId} />
-    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" sessionName={sessionName} onRenameSession={renameSession} savingSessionId={savingSessionId} />
+    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" sessionName={sessionName} />
+    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" sessionName={sessionName} />
 
     <section className="panel-surface stats-recent-section">
       <div className="stats-section-heading"><div><p className="eyebrow">Latest activity</p><h2>Recent reviews</h2></div><Clock3 aria-hidden="true" /></div>
@@ -385,7 +357,7 @@ export function StatsPage() {
   </main>;
 }
 
-function LanguageStats({ language, rows, cards, sessions, href, sessionName, onRenameSession, savingSessionId }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string; sessionName: (session: SessionSummary) => string; onRenameSession: (session: SessionSummary) => Promise<void>; savingSessionId: string | null }) {
+function LanguageStats({ language, rows, cards, sessions, href, sessionName }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string; sessionName: (session: SessionSummary) => string }) {
   const [cardLimit, setCardLimit] = useState(CARD_PREVIEW);
   const aggregate = aggregateLanguage(rows), score = proficiency(cards);
   const hardest = [...cards].filter((card) => card.progress.reviews >= 2).sort((a, b) => b.hardestScore - a.hardestScore).slice(0, 8);
@@ -412,8 +384,8 @@ function LanguageStats({ language, rows, cards, sessions, href, sessionName, onR
     </div>
 
     <div className="panel-surface stats-table-wrap">
-      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Rename gives every session a custom title while preserving its history and ranking.</p></div><TrendingUp aria-hidden="true" /></div>
-      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table stats-session-table"><thead><tr><th>Rank</th><th>Session</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Score</th><th>Vs. previous</th><th>Actions</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td><strong>{sessionName(session)}</strong><span className="stats-session-date">{dateTime(session.startedAt)}{session.inferred ? " · legacy inferred" : ""}</span></td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td><td><div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}<button className="small-outline-button" type="button" disabled={savingSessionId === session.id} onClick={() => void onRenameSession(session)}>{savingSessionId === session.id ? "Saving…" : "Rename"}</button></div></td></tr>)}</tbody></table></div> : <p className="stats-empty">No sessions match this Stats selection.</p>}
+      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Session names are managed in Account and appear here automatically.</p></div><TrendingUp aria-hidden="true" /></div>
+      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table stats-session-table"><thead><tr><th>Rank</th><th>Session</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Score</th><th>Vs. previous</th><th>Actions</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td><strong>{sessionName(session)}</strong><span className="stats-session-date">{dateTime(session.startedAt)}{session.inferred ? " · legacy inferred" : ""}</span></td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td><td><div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}<Link className="small-outline-button" to="/account">Manage</Link></div></td></tr>)}</tbody></table></div> : <p className="stats-empty">No sessions match this Stats selection.</p>}
     </div>
 
     <div className="panel-surface stats-table-wrap">
