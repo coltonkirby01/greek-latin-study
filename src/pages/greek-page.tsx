@@ -28,6 +28,7 @@ export function GreekPage() {
   const [selected, setSelected] = useState<Set<string>>(() => new Set(allCategories));
   const cards = useMemo(() => deck?.cards.filter((card) => selected.has(card.category ?? "")) ?? [], [deck, selected]);
   const countFor = (category: string) => deck?.cards.filter((card) => card.category === category).length ?? 0;
+  const selectionKey = [...selected].sort().join("|");
 
   return <main className="page-shell study-page">
     <div className="study-page-heading">
@@ -46,6 +47,6 @@ export function GreekPage() {
         <FilterCheckbox label="Accent marks" count={countFor(categories.accents)} checked={selected.has(categories.accents)} onChange={(checked) => setSelected((current) => updateSet(current, [categories.accents], checked))} />
       </FilterSection>
     </StudyFilterMenu>}
-    {deck ? <StudySession deck={deck} cards={cards} studyKey={direction} direction={direction} onDirectionChange={setDirection} directionLabels={{ forward: "Symbol → Name", reverse: "Name → Symbol" }} cardMeta={(card) => `Card ${card.rank ?? 0} of ${deck.cards.length}`} renderFront={(_card, copy) => <span className={direction === "forward" ? "greek-front" : "study-prompt reverse-text-prompt"}>{copy.prompt}</span>} renderBack={(card) => { const details = direction === "forward" ? card.back.split("\n").slice(1).join("\n") : card.reverseBack?.split("\n").slice(1).join("\n"); return <span className="answer-block"><strong className={direction === "reverse" ? "greek-front compact-greek" : "greek-answer-title"}>{direction === "reverse" ? card.front : String(card.metadata?.backTitle ?? "Answer")}</strong><span className="answer-notes">{details}</span></span>; }} /> : <div className="study-loading panel-surface"><span className="loading-mark">α</span><p>Preparing Greek…</p></div>}
+    {deck ? <StudySession key={`${direction}:${selectionKey}`} deck={deck} cards={cards} studyKey={direction} direction={direction} onDirectionChange={setDirection} directionLabels={{ forward: "Symbol → Name", reverse: "Name → Symbol" }} cardMeta={(card) => `Card ${card.rank ?? 0} of ${deck.cards.length}`} renderFront={(_card, copy) => <span className={direction === "forward" ? "greek-front" : "study-prompt reverse-text-prompt"}>{copy.prompt}</span>} renderBack={(card) => { const details = direction === "forward" ? card.back.split("\n").slice(1).join("\n") : card.reverseBack?.split("\n").slice(1).join("\n"); return <span className="answer-block"><strong className={direction === "reverse" ? "greek-front compact-greek" : "greek-answer-title"}>{direction === "reverse" ? card.front : String(card.metadata?.backTitle ?? "Answer")}</strong><span className="answer-notes">{details}</span></span>; }} /> : <div className="study-loading panel-surface"><span className="loading-mark">α</span><p>Preparing Greek…</p></div>}
   </main>;
 }
