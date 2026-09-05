@@ -353,7 +353,7 @@ export function StatsPage() {
   }
   async function deleteSession(session: SessionSummary) {
     const reviewIds = session.inferred ? reviewIdsForSession(session.id) : [];
-    const confirmed = window.confirm(`Delete “${session.name}” from session history?\n\nIts reviews will be removed from Stats and session history only. Card mastery, difficulty, strength, due dates, adaptive priorities, response-time memory, and Dickinson unlock progress will not change.`);
+    const confirmed = window.confirm(`Delete “${session.name}”?\n\nWILL BE REMOVED:\n• The session itself\n• Its session-history entry\n• Its availability in the Greek and Latin flashcard session menus\n• All of this session's contribution to Stats\n\nWILL NOT BE REMOVED:\n• Accumulated card mastery and learned status\n• Difficulty/priority calculations and adaptive-review memory/history\n• Scheduling, strength, intervals, and due dates\n• Response-time learning memory\n• Dickinson progressive unlock status\n\nThe learning evidence stays available to the adaptive system, but it will no longer belong to a session or appear in Stats.`);
     if (!confirmed) return;
     setBusySessionId(session.id); setActionError(null);
     try {
@@ -449,7 +449,7 @@ function LanguageStats({ language, rows, cards, sessions, href, sessionName }: {
     </div>
 
     <div className="panel-surface stats-table-wrap">
-      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Double-click a session name under Choose sessions to rename it. Deleting a session changes Stats only, not adaptive study memory.</p></div><TrendingUp aria-hidden="true" /></div>
+      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Double-click a session name under Choose sessions to rename it. Deleting a session removes it from Stats and session menus while preserving adaptive learning memory.</p></div><TrendingUp aria-hidden="true" /></div>
       {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table stats-session-table"><thead><tr><th>Rank</th><th>Session</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Score</th><th>Vs. previous</th><th>Actions</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td><strong>{sessionName(session)}</strong><span className="stats-session-date">{dateTime(session.startedAt)}{session.inferred ? " · legacy inferred" : ""}</span></td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td><td><div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}</div></td></tr>)}</tbody></table></div> : <p className="stats-empty">No sessions match this Stats selection.</p>}
     </div>
 
