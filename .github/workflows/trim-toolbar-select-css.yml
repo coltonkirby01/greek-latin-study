@@ -1,0 +1,28 @@
+name: Trim toolbar select CSS
+
+on:
+  push:
+    branches:
+      - chatgpt/manage-legacy-sessions
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[trim-select-css]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/manage-legacy-sessions
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/trim-toolbar-select-css.mjs
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/styles.css
+          git commit -m "Trim toolbar select CSS [trim-select-css]"
+          git push origin HEAD:chatgpt/manage-legacy-sessions
