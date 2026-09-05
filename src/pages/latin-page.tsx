@@ -1,21 +1,25 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { Link } from "react-router-dom";
 import { loadLatinDeck } from "../data/builtin-decks";
 import { useAuth } from "../features/auth/auth-context";
 import { HenleChartTable } from "../features/henle/henle-chart";
 import { loadHenle, type HenleChart } from "../features/henle/henle-data";
-import { matchesGrammarCard, matchesVocabularyCard, vocabularyFamily, type OptionalSelection } from "../features/study/latin-study-filters";
+import { grammarFormGroups, HENLE_PART1_SECTIONS, matchesGrammarCard, matchesVocabularyCard, vocabularyFamily, type GrammarCardFilters, type OptionalSelection } from "../features/study/latin-study-filters";
 import { MultiSourceStudySession, type StudySourceDefinition } from "../features/study/multi-source-study-session";
-import { FilterCheckbox, FilterSection, StudyFilterMenu } from "../features/study/study-filter-menu";
-import type { DeckDefinition, StudyDirection } from "../features/study/types";
+import { FilterCheckbox, FilterDisclosure, FilterSection, StudyFilterMenu } from "../features/study/study-filter-menu";
+import type { DeckDefinition, StudyCard, StudyDirection } from "../features/study/types";
 import { useAsync } from "../hooks/use-async";
 
 type Material = "vocabulary" | "grammar-forms" | "grammar-charts";
+type GrammarSelections = GrammarCardFilters;
 
-const grammarSections = [["Nouns", 145], ["Adjectives", 349], ["Adverbs", 42], ["Numerals", 132], ["Pronouns", 240], ["Verbs", 1_154]] as const;
-const verbVoices = [["Active Voice", 336], ["Passive Voice", 308], ["Deponent", 65], ["Semi-Deponent", 12]] as const;
-const verbSubsections = [["Verb Foundations & Principal Parts", 52], ["Regular Verbs — Active Voice", 298], ["Regular Verbs — Passive Voice", 274], ["Third Conjugation -iō — Active Voice", 38], ["Third Conjugation -iō — Passive Voice", 34], ["Deponent Verbs", 65], ["Semi-Deponent Verbs", 12], ["Irregular Verbs", 355], ["Defective Verbs", 20], ["Participles — Declension", 6]] as const;
-const verbFormGroups = [["Indicative", 513], ["Subjunctive", 342], ["Imperative", 38], ["Infinitive", 59], ["Participle", 56], ["Gerund", 45], ["Gerundive", 12], ["Supine", 18], ["Principal Parts", 16], ["Personal Endings", 12], ["Stems", 8]] as const;
+const verbVoices = ["Active Voice", "Passive Voice", "Deponent", "Semi-Deponent"] as const;
+const verbSubsections = ["Verb Foundations & Principal Parts", "Regular Verbs — Active Voice", "Regular Verbs — Passive Voice", "Third Conjugation -iō — Active Voice", "Third Conjugation -iō — Passive Voice", "Deponent Verbs", "Semi-Deponent Verbs", "Irregular Verbs", "Defective Verbs", "Participles — Declension"] as const;
+const verbFormGroups = ["Indicative", "Subjunctive", "Imperative", "Infinitive", "Participle", "Gerund", "Gerundive", "Supine", "Principal Parts", "Personal Endings", "Stems"] as const;
+
+function blankGrammarSelections(): GrammarSelections {
+  return { sections: null, verbSubsections: null, voices: null, formGroups: null };
+}
 
 function setValues(current: OptionalSelection, allValues: readonly string[], values: readonly string[], checked: boolean): OptionalSelection {
   const next = current === null ? new Set(allValues) : new Set(current);
@@ -24,6 +28,57 @@ function setValues(current: OptionalSelection, allValues: readonly string[], val
 }
 function selected(selection: OptionalSelection, value: string) { return selection === null || selection.has(value); }
 function selectionKey(selection: OptionalSelection) { return selection === null ? "*" : [...selection].sort().join(","); }
+function grammarSelectionKey(filters: GrammarSelections) { return [selectionKey(filters.sections), selectionKey(filters.voices), selectionKey(filters.formGroups), selectionKey(filters.verbSubsections)].join("~"); }
+
+function sectionCounts(cards: readonly StudyCard[]) {
+  const counts = new Map<string, number>(HENLE_PART1_SECTIONS.map((section) => [section, 0]));
+  for (const card of cards) {
+    const section = card.category ?? "";
+    if (counts.has(section)) counts.set(section, (counts.get(section) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function HenleSourceFilterDisclosure({ title, cards, filters, setFilters }: {
+  title: string;
+  cards: readonly StudyCard[];
+  filters: GrammarSelections;
+  setFilters: Dispatch<SetStateAction<GrammarSelections>>;
+}) {
+  const counts = useMemo(() => sectionCounts(cards), [cards]);
+  const selectedSectionCount = filters.sections === null ? HENLE_PART1_SECTIONS.length : filters.sections.size;
+  const verbsIncluded = selected(filters.sections, "Verbs");
+  const verbSummary = filters.voices === null && filters.formGroups === null && filters.verbSubsections === null ? "All verb forms" : "Verb selection narrowed";
+  const allSections = HENLE_PART1_SECTIONS as readonly string[];
+  const allVoices = verbVoices as readonly string[];
+  const allFormGroups = verbFormGroups as readonly string[];
+  const allSubsections = verbSubsections as readonly string[];
+
+  function change(key: keyof GrammarSelections, allValues: readonly string[], values: readonly string[], checked: boolean) {
+    setFilters((current) => ({ ...current, [key]: setValues(current[key], allValues, values, checked) }));
+  }
+
+  return <FilterDisclosure title={`${title} options`} summary={`${selectedSectionCount} of ${HENLE_PART1_SECTIONS.length} Part 1 sections selected`}>
+    <FilterSection title="Part 1 forms" description="Choose any combination of Henle's grammatical sections." onAll={() => setFilters((current) => ({ ...current, sections: null }))} onNone={() => setFilters((current) => ({ ...current, sections: new Set() }))}>
+      {HENLE_PART1_SECTIONS.map((section) => {
+        const count = counts.get(section) ?? 0;
+        return <FilterCheckbox key={section} label={section} count={count} checked={selected(filters.sections, section)} disabled={count === 0} onChange={(checked) => change("sections", allSections, [section], checked)} />;
+      })}
+    </FilterSection>
+
+    {verbsIncluded && <FilterDisclosure title="Verb details" summary={verbSummary} nested>
+      <FilterSection title="Voice" description="Optionally narrow the selected verb material by voice." onAll={() => setFilters((current) => ({ ...current, voices: null }))} onNone={() => setFilters((current) => ({ ...current, voices: new Set() }))}>
+        {verbVoices.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.voices, value)} onChange={(checked) => change("voices", allVoices, [value], checked)} />)}
+      </FilterSection>
+      <FilterSection title="Mood / form" description="For example, choose Indicative alone or combine Indicative and Subjunctive." onAll={() => setFilters((current) => ({ ...current, formGroups: null }))} onNone={() => setFilters((current) => ({ ...current, formGroups: new Set() }))}>
+        {verbFormGroups.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.formGroups, value)} onChange={(checked) => change("formGroups", allFormGroups, [value], checked)} />)}
+      </FilterSection>
+      <FilterSection title="Verb family" description="Optional further narrowing by conjugation or special verb family." onAll={() => setFilters((current) => ({ ...current, verbSubsections: null }))} onNone={() => setFilters((current) => ({ ...current, verbSubsections: new Set() }))}>
+        {verbSubsections.map((value) => <FilterCheckbox key={value} label={value} checked={selected(filters.verbSubsections, value)} onChange={(checked) => change("verbSubsections", allSubsections, [value], checked)} />)}
+      </FilterSection>
+    </FilterDisclosure>}
+  </FilterDisclosure>;
+}
 
 export function LatinPage() {
   const { value: vocabularyDeck, error: vocabularyError } = useAsync(loadLatinDeck, []);
@@ -34,10 +89,8 @@ export function LatinPage() {
   const { value: henle, error: henleError, loading: henleLoading } = useAsync(async () => needsGrammar ? loadHenle() : null, [needsGrammar]);
 
   const [vocabularyParts, setVocabularyParts] = useState<OptionalSelection>(null);
-  const [sections, setSections] = useState<OptionalSelection>(null);
-  const [voices, setVoices] = useState<OptionalSelection>(null);
-  const [subsections, setSubsections] = useState<OptionalSelection>(null);
-  const [formGroups, setFormGroups] = useState<OptionalSelection>(null);
+  const [formFilters, setFormFilters] = useState<GrammarSelections>(blankGrammarSelections);
+  const [chartFilters, setChartFilters] = useState<GrammarSelections>(blankGrammarSelections);
 
   const vocabularyGroups = useMemo(() => {
     const groups = new Map<string, Array<{ value: string; count: number }>>();
@@ -56,9 +109,8 @@ export function LatinPage() {
   const allVocabularyParts = useMemo(() => [...vocabularyGroups.values()].flat().map((item) => item.value), [vocabularyGroups]);
 
   const vocabularyCards = useMemo(() => vocabularyDeck?.cards.filter((card) => matchesVocabularyCard(card, vocabularyParts)) ?? [], [vocabularyDeck, vocabularyParts]);
-  const grammarFilters = useMemo(() => ({ sections, verbSubsections: subsections, voices, formGroups }), [formGroups, sections, subsections, voices]);
-  const grammarFormCards = useMemo(() => henle?.individualDeck.cards.filter((card) => matchesGrammarCard(card, grammarFilters)) ?? [], [grammarFilters, henle]);
-  const grammarChartCards = useMemo(() => henle?.chartDeck.cards.filter((card) => matchesGrammarCard(card, grammarFilters)) ?? [], [grammarFilters, henle]);
+  const grammarFormCards = useMemo(() => henle?.individualDeck.cards.filter((card) => matchesGrammarCard(card, formFilters)) ?? [], [formFilters, henle]);
+  const grammarChartCards = useMemo(() => henle?.chartDeck.cards.filter((card) => matchesGrammarCard(card, chartFilters)) ?? [], [chartFilters, henle]);
 
   const sources = useMemo(() => {
     const next: StudySourceDefinition[] = [];
@@ -70,25 +122,26 @@ export function LatinPage() {
 
   const selectedCards = useMemo(() => sources.flatMap((source) => source.cards), [sources]);
   const virtualDeck = useMemo<DeckDefinition>(() => ({ id: "latin-study-app", slug: "latin", title: "Latin", eyebrow: "Vocabulary · grammar", description: "A unified Latin study surface that can mix Dickinson vocabulary with Henle forms and whole charts while preserving each source's progress.", language: "latin", cards: selectedCards, supportsReverse: true }), [selectedCards]);
-  const resetKey = `${direction}|${[...materials].sort().join(",")}|${selectionKey(vocabularyParts)}|${selectionKey(sections)}|${selectionKey(voices)}|${selectionKey(subsections)}|${selectionKey(formGroups)}`;
+  const resetKey = `${direction}|${[...materials].sort().join(",")}|vocab:${selectionKey(vocabularyParts)}|forms:${grammarSelectionKey(formFilters)}|charts:${grammarSelectionKey(chartFilters)}`;
   const hasDirectionalCards = materials.has("vocabulary") || materials.has("grammar-forms");
-  const allSections = grammarSections.map(([value]) => value), allVoices = verbVoices.map(([value]) => value), allSubsections = verbSubsections.map(([value]) => value), allFormGroups = verbFormGroups.map(([value]) => value);
 
   function toggleMaterial(material: Material, checked: boolean) { setMaterials((current) => { const next = new Set(current); checked ? next.add(material) : next.delete(material); return next; }); }
 
   return <main className="page-shell study-page latin-page">
     <div className="study-page-heading">
       <div><p className="eyebrow">Vocabulary · forms · whole charts</p><h1>Latin</h1></div>
-      <p>Study vocabulary, grammar, or both together. Narrow the session by part of speech, grammar section, verb family, voice, and form or mood.</p>
+      <p>Mix Dickinson vocabulary with any Henle Part 1 forms you want: nouns, adjectives, adverbs, numerals, pronouns, and verbs. Each Henle source has its own compact drop-down for further narrowing.</p>
     </div>
     {!user && <div className="guest-banner"><span>You are studying as a guest. Progress stays on this device.</span><Link to="/account">Sign in to sync</Link></div>}
     {(vocabularyError || henleError) && <div className="inline-alert">{vocabularyError ?? henleError}</div>}
 
-    <StudyFilterMenu summary={`${selectedCards.length.toLocaleString()} cards in the current pool${henleLoading && needsGrammar ? " · loading grammar…" : ""}`} detail="Selections combine rather than replace one another. For example, choose Vocabulary + Grammar Forms to interleave them, or narrow Grammar to Verbs → Active Voice → Indicative.">
-      <FilterSection title="Study material" description="Choose one or several sources. Grammar is fetched only when you select it, keeping vocabulary startup fast.">
+    <StudyFilterMenu summary={`${selectedCards.length.toLocaleString()} cards in the current pool${henleLoading && needsGrammar ? " · loading grammar…" : ""}`} detail="Selections combine rather than replace one another. Open only the source you want to customize; Henle Grammar Forms and Henle Whole Charts keep independent filters.">
+      <FilterSection title="Study material" description="Choose one or several sources. Henle options stay collapsed until you need them.">
         <FilterCheckbox label="Dickinson vocabulary" count={vocabularyDeck?.cards.length ?? 997} checked={materials.has("vocabulary")} onChange={(checked) => toggleMaterial("vocabulary", checked)} hint="Frequency-ranked; top 100 then 25-card unlocks" />
-        <FilterCheckbox label="Henle grammar forms" count={2_062} checked={materials.has("grammar-forms")} onChange={(checked) => toggleMaterial("grammar-forms", checked)} hint="Individual forms from 331 rule groups" />
+        <FilterCheckbox label="Henle grammar forms" count={2_062} checked={materials.has("grammar-forms")} onChange={(checked) => toggleMaterial("grammar-forms", checked)} hint="Individual forms from Part 1" />
         <FilterCheckbox label="Henle whole charts" count={henle?.chartDeck.cards.length ?? 248} checked={materials.has("grammar-charts")} onChange={(checked) => toggleMaterial("grammar-charts", checked)} hint="Complete paradigms; always prompted forward" />
+        {materials.has("grammar-forms") && (henle ? <HenleSourceFilterDisclosure title="Henle grammar forms" cards={henle.individualDeck.cards} filters={formFilters} setFilters={setFormFilters} /> : <div className="filter-disclosure"><div className="filter-disclosure-body">Loading Henle grammar forms…</div></div>)}
+        {materials.has("grammar-charts") && (henle ? <HenleSourceFilterDisclosure title="Henle whole charts" cards={henle.chartDeck.cards} filters={chartFilters} setFilters={setChartFilters} /> : <div className="filter-disclosure"><div className="filter-disclosure-body">Loading Henle whole charts…</div></div>)}
       </FilterSection>
 
       {materials.has("vocabulary") && vocabularyDeck && <FilterSection title="Vocabulary · parts of speech" description="Leave all selected for the full Dickinson core, or narrow to one or several families." onAll={() => setVocabularyParts(null)} onNone={() => setVocabularyParts(new Set())}>
@@ -99,21 +152,6 @@ export function LatinPage() {
           </div>)}
         </div>
       </FilterSection>}
-
-      {needsGrammar && <>
-        <FilterSection title="Grammar · sections" description="This is the broadest grammar level. Select all grammar, several sections, or just Verbs." onAll={() => setSections(null)} onNone={() => setSections(new Set())}>
-          {grammarSections.map(([value, count]) => <FilterCheckbox key={value} label={value} count={count} checked={selected(sections, value)} onChange={(checked) => setSections((current) => setValues(current, allSections, [value], checked))} />)}
-        </FilterSection>
-        <FilterSection title="Verbs · voice" description="Applies only to verb cards. Leave All for every verb, or narrow to active, passive, deponent, or semi-deponent forms." onAll={() => setVoices(null)} onNone={() => setVoices(new Set())}>
-          {verbVoices.map(([value, count]) => <FilterCheckbox key={value} label={value} count={count} checked={selected(voices, value)} onChange={(checked) => setVoices((current) => setValues(current, allVoices, [value], checked))} />)}
-        </FilterSection>
-        <FilterSection title="Verbs · mood / form" description="Selections intersect with Voice. For example, choosing Active Voice and Indicative produces active indicative verb cards." onAll={() => setFormGroups(null)} onNone={() => setFormGroups(new Set())}>
-          {verbFormGroups.map(([value, count]) => <FilterCheckbox key={value} label={value} count={count} checked={selected(formGroups, value)} onChange={(checked) => setFormGroups((current) => setValues(current, allFormGroups, [value], checked))} />)}
-        </FilterSection>
-        <FilterSection title="Verbs · family" description="Optional additional narrowing by conjugation or special verb family." onAll={() => setSubsections(null)} onNone={() => setSubsections(new Set())}>
-          {verbSubsections.map(([value, count]) => <FilterCheckbox key={value} label={value} count={count} checked={selected(subsections, value)} onChange={(checked) => setSubsections((current) => setValues(current, allSubsections, [value], checked))} />)}
-        </FilterSection>
-      </>}
     </StudyFilterMenu>
 
     {vocabularyDeck ? <MultiSourceStudySession deck={virtualDeck} sources={sources} resetKey={resetKey} direction={direction} onDirectionChange={hasDirectionalCards ? setDirection : undefined} directionLabels={{ forward: "Forward", reverse: "Reverse" }} cardMeta={(card, source) => source.id === "vocabulary" ? `Entry ${Number(card.metadata?.deckPosition ?? 0)} of ${vocabularyDeck.cards.length} · Dickinson rank ${card.rank}` : `Rule ${card.rank}`} priorityPrompt={(card, copy) => String(card.metadata?.studySource) === "grammar-chart" ? `${card.front} · Complete chart` : copy.prompt} renderFront={(card, copy, source) => {
