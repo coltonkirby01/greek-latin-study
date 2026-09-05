@@ -1,0 +1,10 @@
+import fs from "node:fs";
+const path = "src/pages/stats-page.tsx";
+let text = fs.readFileSync(path, "utf8");
+const guard = `  if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;`;
+if (!text.includes(guard)) throw new Error("Stats loading guard not found");
+text = text.replace(guard, `${guard}\n  const loadedValue = value;`);
+const matches = text.match(/Object\.values\(value\.envelopes\)/g) ?? [];
+if (matches.length !== 2) throw new Error(`Expected 2 value.envelopes references, found ${matches.length}`);
+text = text.replaceAll("Object.values(value.envelopes)", "Object.values(loadedValue.envelopes)");
+fs.writeFileSync(path, text);
