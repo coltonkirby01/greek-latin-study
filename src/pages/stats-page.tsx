@@ -304,11 +304,11 @@ export function StatsPage() {
   const allSessionsSelected = selectedSessions === null;
   const scopedEvents = useMemo(() => {
     if (!value) return [];
-    return allSessionsSelected ? value.events : value.events.filter((event) => event.scopeSessionId && selectedSessions.has(event.scopeSessionId));
+    return allSessionsSelected ? value.events : value.events.filter((event) => event.scopeSessionId && (selectedSessions?.has(event.scopeSessionId) ?? false));
   }, [allSessionsSelected, selectedSessions, value]);
   const scopedCards = useMemo(() => value ? cardsForScope(value.cards, scopedEvents, allSessionsSelected) : [], [allSessionsSelected, scopedEvents, value]);
   const scopedRows = useMemo(() => value ? summariesForScope(value.summaries, scopedCards, allSessionsSelected) : [], [allSessionsSelected, scopedCards, value]);
-  const scopedSessions = useMemo(() => value ? (allSessionsSelected ? value.sessions : value.sessions.filter((session) => selectedSessions.has(session.id))) : [], [allSessionsSelected, selectedSessions, value]);
+  const scopedSessions = useMemo(() => value ? (allSessionsSelected ? value.sessions : value.sessions.filter((session) => selectedSessions?.has(session.id) ?? false)) : [], [allSessionsSelected, selectedSessions, value]);
 
   if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;
 
@@ -319,14 +319,16 @@ export function StatsPage() {
     setSelectedSessions(next.size === sessionIds.length ? null : next);
   }
   async function renameSession(session: SessionSummary) {
+    const snapshot = value;
+    if (!snapshot) return;
     const requested = window.prompt("Rename this study session", sessionName(session));
     const nextName = requested?.trim();
     if (!nextName || nextName === sessionName(session)) return;
     setRenameError(null); setSavingSessionId(session.id);
     try {
-      const reviewIds = new Set(value.events.filter((event) => event.scopeSessionId === session.id).map((event) => event.reviewId));
+      const reviewIds = new Set(snapshot.events.filter((event) => event.scopeSessionId === session.id).map((event) => event.reviewId));
       const now = Date.now(), saves: Promise<unknown>[] = [];
-      for (const envelope of Object.values(value.envelopes)) {
+      for (const envelope of Object.values(snapshot.envelopes)) {
         if (!envelope) continue;
         const nextEnvelope = structuredClone(envelope); let changed = false;
         for (const mode of Object.values(nextEnvelope.modes)) {
@@ -349,7 +351,7 @@ export function StatsPage() {
   const greekSessions = scopedSessions.filter((session) => session.language === "Greek"), latinSessions = scopedSessions.filter((session) => session.language === "Latin");
   const overall = proficiency(scopedCards), greekScore = proficiency(greekCards), latinScore = proficiency(latinCards);
   const trends = weeklyTrendData(scopedSessions);
-  const filterLabel = allSessionsSelected ? "All sessions" : `${selectedSessions.size} of ${value.sessions.length} sessions`;
+  const filterLabel = allSessionsSelected ? "All sessions" : `${selectedSessions?.size ?? 0} of ${value.sessions.length} sessions`;
 
   return <main className="page-shell stats-page">
     <header className="stats-hero">
@@ -360,7 +362,7 @@ export function StatsPage() {
 
     <section className="panel-surface stats-session-filter">
       <div className="stats-section-heading"><div><p className="eyebrow">Stats scope</p><h2>Choose sessions</h2><p>{filterLabel}. Every score, card analysis, trend, and review list below follows this selection.</p></div><div className="stats-filter-actions"><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(null)}>All</button><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(new Set())}>Clear</button></div></div>
-      {value.sessions.length ? <div className="stats-session-picker">{[...value.sessions].sort((a, b) => b.startedAt - a.startedAt).map((session) => <div className="stats-session-choice" key={session.id}><label><input type="checkbox" checked={allSessionsSelected || selectedSessions.has(session.id)} onChange={(event) => toggleSession(session.id, event.target.checked)} /><span><strong>{sessionName(session)}</strong><small>{session.language} · {dateTime(session.startedAt)} · {session.reviews} reviews · score {session.score.toFixed(1)}</small></span></label><button className="text-button" type="button" onClick={() => setSelectedSessions(new Set([session.id]))}>Only</button></div>)}</div> : <p className="stats-empty">Complete reviews to create sessions.</p>}
+      {value.sessions.length ? <div className="stats-session-picker">{[...value.sessions].sort((a, b) => b.startedAt - a.startedAt).map((session) => <div className="stats-session-choice" key={session.id}><label><input type="checkbox" checked={allSessionsSelected || (selectedSessions?.has(session.id) ?? false)} onChange={(event) => toggleSession(session.id, event.target.checked)} /><span><strong>{sessionName(session)}</strong><small>{session.language} · {dateTime(session.startedAt)} · {session.reviews} reviews · score {session.score.toFixed(1)}</small></span></label><button className="text-button" type="button" onClick={() => setSelectedSessions(new Set([session.id]))}>Only</button></div>)}</div> : <p className="stats-empty">Complete reviews to create sessions.</p>}
     </section>
 
     <section className="panel-surface stats-score-banner">
