@@ -1,11 +1,11 @@
 import { BarChart3, Clock3, Cloud, Gauge, Laptop, TrendingUp } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { loadGreekDeck, loadGreekLesson3GrammarDeck, loadGreekLesson3VocabularyDeck, loadLatinDeck } from "../data/builtin-decks";
 import { useAuth } from "../features/auth/auth-context";
-import { createModeState, directionalCopy, formatResponseTime, studyStats } from "../features/study/engine";
+import { blankCardProgress, createModeState, directionalCopy, formatResponseTime, studyStats } from "../features/study/engine";
 import { loadHenle } from "../features/henle/henle-data";
-import { loadProgressEnvelope } from "../features/study/progress-repository";
+import { loadProgressEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";
 import { intrinsicCardDifficulty, scoredSession, userProficiencyScore } from "../features/study/scoring";
 import type { CardProgress, DeckDefinition, DeckProgressEnvelope, ReviewRecord, StudyActivityKind, StudyCard, StudyDirection, StudyModeState } from "../features/study/types";
 import { useAsync } from "../hooks/use-async";
@@ -28,19 +28,27 @@ type ReviewEvent = {
   language: Language;
   source: string;
   mode: string;
+  sourceKey: string;
+  cardKey: string;
+  cardId: string;
+  reviewId: string;
   prompt: string;
   reviewedAt: number;
   result: "right" | "wrong";
   difficulty: "easy" | "medium" | "hard";
   responseTimeMs: number;
   intrinsicDifficulty: number;
+  review: ReviewRecord;
   sessionId?: string;
   sessionStartedAt?: number;
+  sessionName?: string;
   activityKind?: StudyActivityKind;
+  scopeSessionId?: string;
 };
 type SessionSummary = {
   id: string;
   language: Language;
+  name: string;
   startedAt: number;
   endedAt: number;
   reviews: number;
@@ -57,9 +65,17 @@ type SessionSummary = {
   inferred: boolean;
   changeFromPrevious: number | null;
 };
+type TrendPoint = { label: string; value: number };
+
+const CARD_PREVIEW = 12;
+const CARD_STEP = 25;
+const sessionDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const weekFormatter = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
 function percent(value: number | null) { return value === null ? "—" : `${(value * 100).toFixed(value >= 0.995 ? 0 : 1)}%`; }
 function difficultyLabel(value: number) { return `${Math.round(value)}/100`; }
+function sourceKey(source: StatsSource) { return `${source.language}::${source.source}::${source.studyKey}`; }
+function cardKey(source: StatsSource, card: StudyCard) { return `${sourceKey(source)}::${card.id}`; }
 
 function formatDuration(ms: number) {
   if (!ms) return "0 s";
@@ -69,6 +85,8 @@ function formatDuration(ms: number) {
   if (minutes < 60) return `${minutes}m ${remaining}s`;
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
+
+function dateTime(value: number) { return value ? sessionDateFormatter.format(value) : "No reviews yet"; }
 
 function stateFor(source: StatsSource, envelopes: Record<string, DeckProgressEnvelope | null>) {
   return envelopes[source.deck.id]?.modes[source.studyKey] ?? createModeState(source.deck.id, source.studyKey, source.deck.cards.length, source.deck.staged);
@@ -124,12 +142,19 @@ function aggregateLanguage(rows: SourceSummary[]) {
   return { totalReviews, accuracy: totalReviews ? rightReviews / totalReviews : null, reviewed, mastered, everWrong, hardCards, totalRecallTimeMs: responseTotal, averageResponseTimeMs: responseCount ? responseTotal / responseCount : 0, bestStreak, lastReviewedAt };
 }
 
+function automaticSessionName(language: Language, reviews: ReviewEvent[], startedAt: number) {
+  const sources = [...new Set(reviews.map((review) => review.source))];
+  const focus = sources.length === 1 ? sources[0] : sources.length === 2 ? sources.join(" + ") : "Mixed study";
+  return `${language} · ${focus} · ${sessionDateFormatter.format(startedAt)}`;
+}
+
 function summarizeSession(id: string, language: Language, reviews: ReviewEvent[], inferred: boolean): SessionSummary {
   const startedAt = Math.min(...reviews.map((review) => review.sessionStartedAt ?? review.reviewedAt)), endedAt = Math.max(...reviews.map((review) => review.reviewedAt));
   const right = reviews.filter((review) => review.result === "right").length, easy = reviews.filter((review) => review.difficulty === "easy").length, medium = reviews.filter((review) => review.difficulty === "medium").length, hard = reviews.filter((review) => review.difficulty === "hard").length;
   const totalTimeMs = reviews.reduce((sum, review) => sum + review.responseTimeMs, 0);
+  const customName = reviews.find((review) => review.sessionName?.trim())?.sessionName?.trim();
   return {
-    id, language, startedAt, endedAt, reviews: reviews.length, right, wrong: reviews.length - right, easy, medium, hard, totalTimeMs,
+    id, language, name: customName || automaticSessionName(language, reviews, startedAt), startedAt, endedAt, reviews: reviews.length, right, wrong: reviews.length - right, easy, medium, hard, totalTimeMs,
     averageTimeMs: totalTimeMs / reviews.length,
     averageCardDifficulty: reviews.reduce((sum, review) => sum + review.intrinsicDifficulty, 0) / reviews.length,
     accuracy: right / reviews.length,
@@ -138,35 +163,112 @@ function summarizeSession(id: string, language: Language, reviews: ReviewEvent[]
   };
 }
 
-function buildSessions(events: ReviewEvent[]) {
+function buildSessions(rawEvents: ReviewEvent[]) {
+  const events = rawEvents.map((event) => ({ ...event }));
   const sessions: SessionSummary[] = [];
   for (const language of ["Greek", "Latin"] as Language[]) {
     const languageEvents = events.filter((event) => event.language === language && event.activityKind !== "warmup").sort((a, b) => a.reviewedAt - b.reviewedAt);
     const explicit = new Map<string, ReviewEvent[]>(), legacy: ReviewEvent[] = [];
-    for (const event of languageEvents) event.sessionId ? explicit.set(event.sessionId, [...(explicit.get(event.sessionId) ?? []), event]) : legacy.push(event);
+    for (const event of languageEvents) {
+      if (event.sessionId) {
+        event.scopeSessionId = event.sessionId;
+        explicit.set(event.sessionId, [...(explicit.get(event.sessionId) ?? []), event]);
+      } else legacy.push(event);
+    }
     for (const [id, reviews] of explicit) sessions.push(summarizeSession(id, language, reviews, false));
     let inferredIndex = 0, bucket: ReviewEvent[] = [];
+    const closeBucket = () => {
+      if (!bucket.length) return;
+      const id = `legacy-${language}-${inferredIndex++}`;
+      for (const event of bucket) event.scopeSessionId = id;
+      sessions.push(summarizeSession(id, language, bucket, true));
+      bucket = [];
+    };
     for (const event of legacy) {
       const previous = bucket.at(-1);
-      if (previous && event.reviewedAt - previous.reviewedAt > 30 * 60_000) { sessions.push(summarizeSession(`legacy-${language}-${inferredIndex++}`, language, bucket, true)); bucket = []; }
+      if (previous && event.reviewedAt - previous.reviewedAt > 30 * 60_000) closeBucket();
       bucket.push(event);
     }
-    if (bucket.length) sessions.push(summarizeSession(`legacy-${language}-${inferredIndex}`, language, bucket, true));
+    closeBucket();
   }
   for (const language of ["Greek", "Latin"] as Language[]) {
     const chronological = sessions.filter((session) => session.language === language).sort((a, b) => a.startedAt - b.startedAt);
     chronological.forEach((session, index) => { session.changeFromPrevious = index ? Number((session.score - chronological[index - 1].score).toFixed(1)) : null; });
   }
-  return sessions;
+  return { sessions, events };
+}
+
+function scopedProgress(reviews: ReviewRecord[]) {
+  const progress = blankCardProgress(), history = [...reviews].sort((a, b) => a.reviewedAt - b.reviewedAt);
+  progress.presented = history.length; progress.reviews = history.length; progress.responseTimeCount = history.length;
+  let streak = 0;
+  for (const review of history) {
+    progress[review.result] += 1; progress[review.difficulty] += 1; progress.responseTimeTotalMs += review.responseTimeMs;
+    if (review.result === "right") { streak += 1; progress.initialMastered = true; } else { streak = 0; progress.lapses += 1; }
+    progress.bestStreak = Math.max(progress.bestStreak, streak);
+  }
+  progress.streak = streak; progress.history = history;
+  const last = history.at(-1);
+  if (last) {
+    progress.lastReviewedAt = last.reviewedAt; progress.lastResult = last.result; progress.lastDifficulty = last.difficulty; progress.lastResponseTimeMs = last.responseTimeMs; progress.intervalMs = last.intervalMs; progress.strength = last.strength;
+  }
+  return progress;
+}
+
+function cardsForScope(allCards: CardPerformance[], events: ReviewEvent[], allSessions: boolean) {
+  if (allSessions) return allCards;
+  const histories = new Map<string, ReviewRecord[]>();
+  for (const event of events) histories.set(event.cardKey, [...(histories.get(event.cardKey) ?? []), event.review]);
+  return allCards.flatMap((card) => {
+    const history = histories.get(cardKey(card.source, card.card));
+    return history?.length ? [summarizeCard(card.source, card.card, scopedProgress(history))] : [];
+  });
+}
+
+function summariesForScope(allRows: SourceSummary[], cards: CardPerformance[], allSessions: boolean) {
+  if (allSessions) return allRows;
+  const bySource = new Map<string, CardPerformance[]>();
+  for (const card of cards) bySource.set(sourceKey(card.source), [...(bySource.get(sourceKey(card.source)) ?? []), card]);
+  return allRows.map((row) => {
+    const state = createModeState(row.source.deck.id, row.source.studyKey, row.source.deck.cards.length, row.source.deck.staged);
+    state.unlockedCount = row.state.unlockedCount;
+    for (const card of bySource.get(sourceKey(row.source)) ?? []) state.cards[card.card.id] = card.progress;
+    state.totalReviews = Object.values(state.cards).reduce((sum, progress) => sum + progress.reviews, 0);
+    state.rightReviews = Object.values(state.cards).reduce((sum, progress) => sum + progress.right, 0);
+    state.wrongReviews = state.totalReviews - state.rightReviews;
+    state.updatedAt = Math.max(0, ...Object.values(state.cards).map((progress) => progress.lastReviewedAt));
+    return summarizeSource(row.source, state);
+  });
 }
 
 function proficiency(cards: CardPerformance[]) {
   return userProficiencyScore(cards.map((card) => ({ context: { language: card.source.language, source: card.source.source, cards: card.source.cards }, card: card.card, progress: card.progress })));
 }
-function dateTime(value: number) { return value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(value) : "No reviews yet"; }
+
+function weeklyTrendData(sessions: SessionSummary[]) {
+  const buckets = new Map<number, SessionSummary[]>();
+  for (const session of sessions) {
+    const date = new Date(session.startedAt), day = (date.getDay() + 6) % 7;
+    date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - day);
+    const key = date.getTime(); buckets.set(key, [...(buckets.get(key) ?? []), session]);
+  }
+  const weeks = [...buckets.entries()].sort(([a], [b]) => a - b);
+  const score: TrendPoint[] = [], time: TrendPoint[] = [];
+  for (const [week, items] of weeks) {
+    const reviews = items.reduce((sum, item) => sum + item.reviews, 0), totalTime = items.reduce((sum, item) => sum + item.totalTimeMs, 0);
+    score.push({ label: weekFormatter.format(week), value: items.reduce((sum, item) => sum + item.score, 0) / items.length });
+    time.push({ label: weekFormatter.format(week), value: reviews ? totalTime / reviews / 1_000 : 0 });
+  }
+  return { score, time };
+}
 
 export function StatsPage() {
   const { user } = useAuth();
+  const [selectedSessions, setSelectedSessions] = useState<Set<string> | null>(null);
+  const [sessionNameOverrides, setSessionNameOverrides] = useState<Record<string, string>>({});
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [savingSessionId, setSavingSessionId] = useState<string | null>(null);
+
   const { value, error, loading } = useAsync(async () => {
     const [greekFoundation, greekVocabulary, greekGrammar, latinVocabulary, henle] = await Promise.all([loadGreekDeck(), loadGreekLesson3VocabularyDeck(), loadGreekLesson3GrammarDeck(), loadLatinDeck(), loadHenle()]);
     const sources: StatsSource[] = [
@@ -187,43 +289,102 @@ export function StatsPage() {
     const envelopes = Object.fromEntries(loaded.map(([deckId, result]) => [deckId, result.envelope])) as Record<string, DeckProgressEnvelope | null>;
     const summaries = sources.map((source) => summarizeSource(source, stateFor(source, envelopes)));
     const cards = summaries.flatMap((row) => row.source.cards.map((card) => { const progress = row.state.cards[card.id]; return progress?.reviews ? summarizeCard(row.source, card, progress) : null; }).filter((item): item is CardPerformance => Boolean(item)));
-    const events: ReviewEvent[] = [];
-    for (const card of cards) for (const review of card.progress.history) events.push({ language: card.source.language, source: card.source.source, mode: card.source.mode, prompt: card.prompt, reviewedAt: review.reviewedAt, result: review.result, difficulty: review.difficulty, responseTimeMs: review.responseTimeMs, intrinsicDifficulty: card.intrinsicDifficulty, sessionId: review.sessionId, sessionStartedAt: review.sessionStartedAt, activityKind: review.activityKind });
+    const rawEvents: ReviewEvent[] = [];
+    for (const card of cards) for (const review of card.progress.history) rawEvents.push({
+      language: card.source.language, source: card.source.source, mode: card.source.mode, sourceKey: sourceKey(card.source), cardKey: cardKey(card.source, card.card), cardId: card.card.id, reviewId: review.id,
+      prompt: card.prompt, reviewedAt: review.reviewedAt, result: review.result, difficulty: review.difficulty, responseTimeMs: review.responseTimeMs, intrinsicDifficulty: card.intrinsicDifficulty, review,
+      sessionId: review.sessionId, sessionStartedAt: review.sessionStartedAt, sessionName: review.sessionName, activityKind: review.activityKind,
+    });
+    const { sessions, events } = buildSessions(rawEvents);
     events.sort((a, b) => b.reviewedAt - a.reviewedAt);
-    return { summaries, cards, sessions: buildSessions(events), recent: events.slice(0, 30) };
+    return { summaries, cards, sessions, events, envelopes };
   }, [user?.id]);
+
+  const sessionIds = useMemo(() => value?.sessions.map((session) => session.id) ?? [], [value?.sessions]);
+  const allSessionsSelected = selectedSessions === null;
+  const scopedEvents = useMemo(() => {
+    if (!value) return [];
+    return allSessionsSelected ? value.events : value.events.filter((event) => event.scopeSessionId && selectedSessions.has(event.scopeSessionId));
+  }, [allSessionsSelected, selectedSessions, value]);
+  const scopedCards = useMemo(() => value ? cardsForScope(value.cards, scopedEvents, allSessionsSelected) : [], [allSessionsSelected, scopedEvents, value]);
+  const scopedRows = useMemo(() => value ? summariesForScope(value.summaries, scopedCards, allSessionsSelected) : [], [allSessionsSelected, scopedCards, value]);
+  const scopedSessions = useMemo(() => value ? (allSessionsSelected ? value.sessions : value.sessions.filter((session) => selectedSessions.has(session.id))) : [], [allSessionsSelected, selectedSessions, value]);
 
   if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;
 
-  const greekRows = value.summaries.filter((row) => row.source.language === "Greek"), latinRows = value.summaries.filter((row) => row.source.language === "Latin");
-  const greekCards = value.cards.filter((card) => card.source.language === "Greek"), latinCards = value.cards.filter((card) => card.source.language === "Latin");
-  const greekSessions = value.sessions.filter((session) => session.language === "Greek"), latinSessions = value.sessions.filter((session) => session.language === "Latin");
-  const overall = proficiency(value.cards), greekScore = proficiency(greekCards), latinScore = proficiency(latinCards);
+  function sessionName(session: SessionSummary) { return sessionNameOverrides[session.id] ?? session.name; }
+  function toggleSession(id: string, checked: boolean) {
+    const next = selectedSessions === null ? new Set(sessionIds) : new Set(selectedSessions);
+    if (checked) next.add(id); else next.delete(id);
+    setSelectedSessions(next.size === sessionIds.length ? null : next);
+  }
+  async function renameSession(session: SessionSummary) {
+    const requested = window.prompt("Rename this study session", sessionName(session));
+    const nextName = requested?.trim();
+    if (!nextName || nextName === sessionName(session)) return;
+    setRenameError(null); setSavingSessionId(session.id);
+    try {
+      const reviewIds = new Set(value.events.filter((event) => event.scopeSessionId === session.id).map((event) => event.reviewId));
+      const now = Date.now(), saves: Promise<unknown>[] = [];
+      for (const envelope of Object.values(value.envelopes)) {
+        if (!envelope) continue;
+        const nextEnvelope = structuredClone(envelope); let changed = false;
+        for (const mode of Object.values(nextEnvelope.modes)) {
+          let modeChanged = false;
+          for (const progress of Object.values(mode.cards)) {
+            progress.history = progress.history.map((review) => reviewIds.has(review.id) ? (modeChanged = true, changed = true, { ...review, sessionName: nextName }) : review);
+          }
+          if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
+        }
+        if (changed) { nextEnvelope.updatedAt = Math.max(nextEnvelope.updatedAt, now); saves.push(saveProgressEnvelope(nextEnvelope, user)); }
+      }
+      await Promise.all(saves);
+      setSessionNameOverrides((current) => ({ ...current, [session.id]: nextName }));
+    } catch (reason) { setRenameError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setSavingSessionId(null); }
+  }
+
+  const greekRows = scopedRows.filter((row) => row.source.language === "Greek"), latinRows = scopedRows.filter((row) => row.source.language === "Latin");
+  const greekCards = scopedCards.filter((card) => card.source.language === "Greek"), latinCards = scopedCards.filter((card) => card.source.language === "Latin");
+  const greekSessions = scopedSessions.filter((session) => session.language === "Greek"), latinSessions = scopedSessions.filter((session) => session.language === "Latin");
+  const overall = proficiency(scopedCards), greekScore = proficiency(greekCards), latinScore = proficiency(latinCards);
+  const trends = weeklyTrendData(scopedSessions);
+  const filterLabel = allSessionsSelected ? "All sessions" : `${selectedSessions.size} of ${value.sessions.length} sessions`;
 
   return <main className="page-shell stats-page">
     <header className="stats-hero">
-      <div><p className="eyebrow">Continuous memory bank</p><h1>Study Stats</h1><p>Your complete Greek and Latin history is analyzed here whether or not a source is currently selected. Card difficulty is intrinsic to the material; your score rewards accurate, fast, retained mastery of progressively harder material.</p></div>
+      <div><p className="eyebrow">Continuous memory bank</p><h1>Study Stats</h1><p>Your complete Greek and Latin history is analyzed here. Use the session filter to compare one session, several sessions together, or your complete history.</p></div>
       <div className="stats-sync-note">{user ? <Cloud aria-hidden="true" /> : <Laptop aria-hidden="true" />}<span>{user ? "Showing your synced account progress" : "Showing guest progress saved on this device"}</span></div>
     </header>
-    {error && <div className="inline-alert">{error}</div>}
+    {(error || renameError) && <div className="inline-alert">{error ?? renameError}</div>}
+
+    <section className="panel-surface stats-session-filter">
+      <div className="stats-section-heading"><div><p className="eyebrow">Stats scope</p><h2>Choose sessions</h2><p>{filterLabel}. Every score, card analysis, trend, and review list below follows this selection.</p></div><div className="stats-filter-actions"><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(null)}>All</button><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(new Set())}>Clear</button></div></div>
+      {value.sessions.length ? <div className="stats-session-picker">{[...value.sessions].sort((a, b) => b.startedAt - a.startedAt).map((session) => <div className="stats-session-choice" key={session.id}><label><input type="checkbox" checked={allSessionsSelected || selectedSessions.has(session.id)} onChange={(event) => toggleSession(session.id, event.target.checked)} /><span><strong>{sessionName(session)}</strong><small>{session.language} · {dateTime(session.startedAt)} · {session.reviews} reviews · score {session.score.toFixed(1)}</small></span></label><button className="text-button" type="button" onClick={() => setSelectedSessions(new Set([session.id]))}>Only</button></div>)}</div> : <p className="stats-empty">Complete reviews to create sessions.</p>}
+    </section>
 
     <section className="panel-surface stats-score-banner">
       <div className="stats-score-main"><Gauge aria-hidden="true" /><div><span>Overall proficiency</span><strong>{overall.score}</strong><em>{overall.tier}</em></div></div>
       <div className="stats-score-breakdown"><div><span>Greek</span><strong>{greekScore.score}</strong><em>{greekScore.tier}</em></div><div><span>Latin</span><strong>{latinScore.score}</strong><em>{latinScore.tier}</em></div><div><span>Avg. reviewed difficulty</span><strong>{difficultyLabel(overall.averageDifficulty)}</strong></div><div><span>Hardest mastered</span><strong>{difficultyLabel(overall.hardestMastered)}</strong></div></div>
     </section>
 
-    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" />
-    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" />
+    <section className="stats-trend-grid">
+      <TrendChart title="Session score by week" subtitle="Average ranked-session score" points={trends.score} format={(value) => value.toFixed(1)} />
+      <TrendChart title="Recall time by week" subtitle="Average active front-side time" points={trends.time} format={(value) => `${value.toFixed(value < 10 ? 2 : 1)} s`} lowerIsBetter />
+    </section>
+
+    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" sessionName={sessionName} onRenameSession={renameSession} savingSessionId={savingSessionId} />
+    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" sessionName={sessionName} onRenameSession={renameSession} savingSessionId={savingSessionId} />
 
     <section className="panel-surface stats-recent-section">
       <div className="stats-section-heading"><div><p className="eyebrow">Latest activity</p><h2>Recent reviews</h2></div><Clock3 aria-hidden="true" /></div>
-      {value.recent.length ? <div className="stats-recent-list">{value.recent.map((review, index) => <div className="stats-recent-row" key={`${review.reviewedAt}:${review.source}:${index}`}><div><strong>{review.prompt}</strong><span>{review.language} · {review.source} · {review.mode} · difficulty {difficultyLabel(review.intrinsicDifficulty)} · {dateTime(review.reviewedAt)}{review.activityKind === "warmup" ? " · warm-up" : ""}</span></div><div className="stats-review-result"><span className={review.result === "right" ? "is-right" : "is-wrong"}>{review.result}</span><span>{review.difficulty}</span><span>{formatResponseTime(review.responseTimeMs)}</span></div></div>)}</div> : <p className="stats-empty">No saved reviews yet.</p>}
+      {scopedEvents.length ? <div className="stats-recent-list">{scopedEvents.slice(0, 12).map((review, index) => <div className="stats-recent-row" key={`${review.reviewedAt}:${review.source}:${index}`}><div><strong>{review.prompt}</strong><span>{review.language} · {review.source} · {review.mode} · difficulty {difficultyLabel(review.intrinsicDifficulty)} · {dateTime(review.reviewedAt)}{review.activityKind === "warmup" ? " · warm-up" : ""}</span></div><div className="stats-review-result"><span className={review.result === "right" ? "is-right" : "is-wrong"}>{review.result}</span><span>{review.difficulty}</span><span>{formatResponseTime(review.responseTimeMs)}</span></div></div>)}</div> : <p className="stats-empty">No reviews match the selected sessions.</p>}
     </section>
   </main>;
 }
 
-function LanguageStats({ language, rows, cards, sessions, href }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string }) {
-  const [cardLimit, setCardLimit] = useState(100);
+function LanguageStats({ language, rows, cards, sessions, href, sessionName, onRenameSession, savingSessionId }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string; sessionName: (session: SessionSummary) => string; onRenameSession: (session: SessionSummary) => Promise<void>; savingSessionId: string | null }) {
+  const [cardLimit, setCardLimit] = useState(CARD_PREVIEW);
   const aggregate = aggregateLanguage(rows), score = proficiency(cards);
   const hardest = [...cards].filter((card) => card.progress.reviews >= 2).sort((a, b) => b.hardestScore - a.hardestScore).slice(0, 8);
   const difficultMastered = [...cards].filter((card) => card.progress.initialMastered).sort((a, b) => b.intrinsicDifficulty - a.intrinsicDifficulty).slice(0, 8);
@@ -231,6 +392,7 @@ function LanguageStats({ language, rows, cards, sessions, href }: { language: La
   const improved = [...cards].filter((card) => (card.improvement ?? 0) > 0).sort((a, b) => (b.improvement ?? 0) - (a.improvement ?? 0)).slice(0, 8);
   const mostReviewed = [...cards].sort((a, b) => b.progress.reviews - a.progress.reviews).slice(0, 8);
   const cardRows = [...cards].sort((a, b) => b.totalTimeMs - a.totalTimeMs), rankedSessions = [...sessions].sort((a, b) => b.score - a.score || b.reviews - a.reviews);
+  const visibleCardCount = Math.min(cardLimit, cardRows.length);
 
   return <section className="stats-language-section">
     <div className="stats-language-title"><div><p className="eyebrow">{language}</p><h2>{language} memory bank</h2></div><Link className="small-outline-button" to={href}>Open {language}</Link></div>
@@ -248,8 +410,8 @@ function LanguageStats({ language, rows, cards, sessions, href }: { language: La
     </div>
 
     <div className="panel-surface stats-table-wrap">
-      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Ranked sessions reward accuracy, speed, streaks, and harder material. Warm-ups strengthen memory but do not enter this ranking.</p></div><TrendingUp aria-hidden="true" /></div>
-      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table"><thead><tr><th>Rank</th><th>Started</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Right / Wrong</th><th>Easy / Medium / Hard</th><th>Score</th><th>Vs. previous</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td>{dateTime(session.startedAt)}{session.inferred ? <span className="stats-legacy-note"> inferred</span> : null}</td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td>{session.right} / {session.wrong}</td><td>{session.easy} / {session.medium} / {session.hard}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td></tr>)}</tbody></table></div> : <p className="stats-empty">Complete reviews to create ranked study sessions.</p>}
+      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Rename gives every session a custom title while preserving its history and ranking.</p></div><TrendingUp aria-hidden="true" /></div>
+      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table stats-session-table"><thead><tr><th>Rank</th><th>Session</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Score</th><th>Vs. previous</th><th>Actions</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td><strong>{sessionName(session)}</strong><span className="stats-session-date">{dateTime(session.startedAt)}{session.inferred ? " · legacy inferred" : ""}</span></td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td><td><div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}<button className="small-outline-button" type="button" disabled={savingSessionId === session.id} onClick={() => void onRenameSession(session)}>{savingSessionId === session.id ? "Saving…" : "Rename"}</button></div></td></tr>)}</tbody></table></div> : <p className="stats-empty">No sessions match this Stats selection.</p>}
     </div>
 
     <div className="panel-surface stats-table-wrap">
@@ -258,10 +420,17 @@ function LanguageStats({ language, rows, cards, sessions, href }: { language: La
     </div>
 
     <div className="panel-surface stats-table-wrap">
-      <div className="stats-section-heading"><div><p className="eyebrow">Card-by-card</p><h3>Time, difficulty, and performance for every reviewed card</h3><p>Sorted by total active recall time. Forward and Reverse remain separate memory records.</p></div><Clock3 aria-hidden="true" /></div>
-      {cardRows.length ? <><div className="stats-table-scroll"><table className="stats-table stats-card-table"><thead><tr><th>Card</th><th>Source</th><th>Mode</th><th>Intrinsic difficulty</th><th>Reviews</th><th>Accuracy</th><th>Total time</th><th>Avg. time</th><th>Last time</th><th>Wrong</th><th>Hard</th><th>Best streak</th><th>Last reviewed</th></tr></thead><tbody>{cardRows.slice(0, cardLimit).map((card) => <tr key={`${card.source.source}:${card.source.studyKey}:${card.card.id}`}><td className="stats-card-prompt">{card.prompt}</td><td>{card.source.source}</td><td>{card.source.mode}</td><td>{difficultyLabel(card.intrinsicDifficulty)}</td><td>{card.progress.reviews}</td><td>{percent(card.accuracy)}</td><td>{formatDuration(card.totalTimeMs)}</td><td>{formatResponseTime(card.averageTimeMs)}</td><td>{formatResponseTime(card.progress.lastResponseTimeMs)}</td><td>{card.progress.wrong}</td><td>{card.progress.hard}</td><td>{card.progress.bestStreak}</td><td>{dateTime(card.progress.lastReviewedAt)}</td></tr>)}</tbody></table></div>{cardRows.length > cardLimit && <button className="small-outline-button stats-load-more" type="button" onClick={() => setCardLimit((value) => value + 100)}>Show 100 more ({(cardRows.length - cardLimit).toLocaleString()} remaining)</button>}</> : <p className="stats-empty">No reviewed cards yet.</p>}
+      <div className="stats-section-heading"><div><p className="eyebrow">Card-by-card preview</p><h3>Time, difficulty, and performance</h3><p>Showing {visibleCardCount.toLocaleString()} of {cardRows.length.toLocaleString()} reviewed card-directions, sorted by total active recall time.</p></div><Clock3 aria-hidden="true" /></div>
+      {cardRows.length ? <><div className="stats-table-scroll"><table className="stats-table stats-card-table"><thead><tr><th>Card</th><th>Source</th><th>Mode</th><th>Intrinsic difficulty</th><th>Reviews</th><th>Accuracy</th><th>Total time</th><th>Avg. time</th><th>Last time</th><th>Wrong</th><th>Hard</th><th>Best streak</th><th>Last reviewed</th></tr></thead><tbody>{cardRows.slice(0, visibleCardCount).map((card) => <tr key={`${card.source.source}:${card.source.studyKey}:${card.card.id}`}><td className="stats-card-prompt">{card.prompt}</td><td>{card.source.source}</td><td>{card.source.mode}</td><td>{difficultyLabel(card.intrinsicDifficulty)}</td><td>{card.progress.reviews}</td><td>{percent(card.accuracy)}</td><td>{formatDuration(card.totalTimeMs)}</td><td>{formatResponseTime(card.averageTimeMs)}</td><td>{formatResponseTime(card.progress.lastResponseTimeMs)}</td><td>{card.progress.wrong}</td><td>{card.progress.hard}</td><td>{card.progress.bestStreak}</td><td>{dateTime(card.progress.lastReviewedAt)}</td></tr>)}</tbody></table></div><div className="stats-card-controls">{visibleCardCount < cardRows.length && <button className="small-outline-button" type="button" onClick={() => setCardLimit((value) => Math.min(cardRows.length, value + CARD_STEP))}>Show more</button>}{visibleCardCount < cardRows.length && <button className="small-outline-button" type="button" onClick={() => setCardLimit(cardRows.length)}>Show all</button>}{cardLimit > CARD_PREVIEW && <button className="text-button" type="button" onClick={() => setCardLimit(CARD_PREVIEW)}>Collapse to preview</button>}</div></> : <p className="stats-empty">No reviewed cards match this selection.</p>}
     </div>
   </section>;
+}
+
+function TrendChart({ title, subtitle, points, format, lowerIsBetter = false }: { title: string; subtitle: string; points: TrendPoint[]; format: (value: number) => string; lowerIsBetter?: boolean }) {
+  if (!points.length) return <section className="panel-surface stats-trend-panel"><h3>{title}</h3><p>{subtitle}</p><span className="stats-empty">No session data in this scope.</span></section>;
+  const values = points.map((point) => point.value), min = Math.min(...values), max = Math.max(...values), range = Math.max(1, max - min);
+  const coordinates = points.map((point, index) => ({ ...point, x: points.length === 1 ? 50 : 6 + index * (88 / (points.length - 1)), y: 38 - ((point.value - min) / range) * 30 }));
+  return <section className="panel-surface stats-trend-panel"><div className="stats-trend-heading"><div><h3>{title}</h3><p>{subtitle}{lowerIsBetter ? " · lower is better" : ""}</p></div><strong>{format(points.at(-1)?.value ?? 0)}</strong></div><svg className="stats-trend-chart" viewBox="0 0 100 44" role="img" aria-label={`${title}. Latest value ${format(points.at(-1)?.value ?? 0)}.`}><polyline points={coordinates.map((point) => `${point.x},${point.y}`).join(" ")} /><g>{coordinates.map((point) => <circle key={`${point.label}:${point.x}`} cx={point.x} cy={point.y} r="1.6"><title>{point.label}: {format(point.value)}</title></circle>)}</g></svg><div className="stats-trend-axis"><span>{points[0].label}</span><span>{points.at(-1)?.label}</span></div></section>;
 }
 
 function RankedCards({ title, subtitle, cards, metric, icon }: { title: string; subtitle: string; cards: CardPerformance[]; metric: (card: CardPerformance) => string; icon?: ReactNode }) {
