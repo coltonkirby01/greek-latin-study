@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEnvelope, createModeState, directionalCopy, formatResponseTime, getCardProgress, maybeUnlockNextBatch, presentCard, priorityScore, recordReview, reviewAndAdvance, skipAndAdvance } from "../src/features/study/engine";
+import { createEnvelope, createModeState, directionalCopy, formatResponseTime, getCardProgress, maybeUnlockNextBatch, pickNextCard, presentCard, priorityScore, recordReview, reviewAndAdvance, skipAndAdvance } from "../src/features/study/engine";
 import { mergeProgressEnvelopes } from "../src/features/study/progress-repository";
 import { blankTimerLedger, pauseTimer, readTimer, resumeTimer } from "../src/features/study/timer-ledger";
 import type { StudyCard } from "../src/features/study/types";
@@ -54,6 +54,15 @@ describe("unified study engine", () => {
     const slow = recordReview(base, cards[0], { id: "slow", result: "right", difficulty: "easy", responseTimeMs: 32_000, reviewedAt: 10_000 });
     expect(getCardProgress(slow, "one").intervalMs).toBeLessThan(getCardProgress(fast, "one").intervalMs);
     expect(priorityScore(cards[0], slow, { ignoreRecency: true, now: 10_001 })).toBeGreaterThan(priorityScore(cards[0], fast, { ignoreRecency: true, now: 10_001 }));
+  });
+
+  it("does not ping-pong among the most recently presented adaptive cards when alternatives exist", () => {
+    const pool: StudyCard[] = Array.from({ length: 7 }, (_, index) => ({ id: `card-${index + 1}`, deckId: "test", front: `front ${index + 1}`, back: `back ${index + 1}` }));
+    let state = createModeState("test", "forward", pool.length, undefined, 1);
+    for (let index = 0; index < 4; index += 1) state = presentCard(state, pool[index], 10 + index);
+    const next = pickNextCard(pool, state, "adaptive", { random: () => 0 });
+    expect(next).not.toBeNull();
+    expect(["card-1", "card-2", "card-3", "card-4"]).not.toContain(next?.id);
   });
 
   it("Skip changes cards without grading", () => {
