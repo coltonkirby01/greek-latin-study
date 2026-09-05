@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpenText, Cloud, Repeat2 } from "lucide-react";
+import { ArrowRight, BookOpenText, Cloud, ExternalLink, Repeat2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { homeCourses, type CourseId } from "../config/site";
@@ -29,10 +29,13 @@ export function HomePage() {
   </main>;
 }
 
-function Course({ visual, count, eyebrow, title, description, href, linkLabel }: { visual: ReactNode; count: string; eyebrow: string; title: string; description: string; href: string; linkLabel: string }) {
+function Course({ visual, count, eyebrow, title, description, sourceLinks, href, linkLabel }: { visual: ReactNode; count: string; eyebrow: string; title: string; description: string; sourceLinks: readonly { label: string; href: string }[]; href: string; linkLabel: string }) {
   return <article className="course-card">
     <div className="course-card-top">{visual}{count && <span className="course-count">{count}</span>}</div>
     <p className="eyebrow">{eyebrow}</p><h2>{title}</h2><p>{description}</p>
+    {sourceLinks.length > 0 && <div className="course-source-links" aria-label={`${eyebrow} sources`}>
+      {sourceLinks.map((source) => <a key={source.href} href={source.href} target="_blank" rel="noreferrer">{source.label} <ExternalLink aria-hidden="true" /></a>)}
+    </div>}
     <Link className="course-link" to={href}>{linkLabel} <ArrowRight /></Link>
   </article>;
 }
