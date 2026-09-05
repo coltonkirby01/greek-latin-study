@@ -216,7 +216,6 @@
 .stats-trend-panel {
   min-width: 0;
   padding: 1rem;
-  color: var(--foreground);
 }
 
 .stats-trend-heading strong {
@@ -275,7 +274,6 @@
   display: grid;
   gap: 0.35rem;
   align-content: center;
-  color: var(--foreground);
 }
 
 .stats-overview-card span {
@@ -300,7 +298,6 @@
 .stats-ranked-panel {
   padding: 1rem;
   min-width: 0;
-  color: var(--foreground);
 }
 
 .stats-ranked-panel ol {
@@ -346,7 +343,6 @@
 .stats-table-wrap,
 .stats-recent-section {
   padding: 1.1rem;
-  color: var(--foreground);
 }
 
 .stats-table-scroll {
@@ -359,7 +355,6 @@
   min-width: 1150px;
   border-collapse: collapse;
   font-size: 0.8rem;
-  color: var(--foreground);
 }
 
 .stats-session-table {
@@ -384,10 +379,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
-}
-
-.stats-table td {
-  color: var(--foreground);
 }
 
 .stats-table td:first-child {
