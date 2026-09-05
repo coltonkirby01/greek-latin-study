@@ -77,6 +77,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Do not eagerly load large deck data, especially Henle, unless the user enters that feature.
 - Prefer small, stable shared components over duplicated markup, but avoid abstraction that adds runtime work without reducing maintenance risk.
 - Before adding a large dependency, verify that the capability cannot be implemented with existing dependencies or platform APIs.
+- The production build enforces a bundle budget in `scripts/check-bundle-size.mjs`: main JavaScript must remain at or below 160 KB gzip and total CSS at or below 12 KB gzip. Do not raise these limits merely to make a change pass; first reduce the added payload or document why a deliberate budget increase is warranted.
 
 ## Validation before completion
 
