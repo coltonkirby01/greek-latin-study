@@ -1,5 +1,10 @@
 export type CourseId = "greek" | "latin" | "reading";
 
+type CourseSourceLink = {
+  label: string;
+  href: string;
+};
+
 export const primaryNavLinks = [
   { label: "Home", href: "/" },
   { label: "Greek", href: "/greek" },
@@ -13,8 +18,12 @@ export const homeCourses = [
     visual: "greek",
     count: "",
     eyebrow: "Greek",
-    title: "Lessons, vocabulary, and grammar",
-    description: "Build one Greek study session from lesson-based material. Select entire headings at once or open them to combine narrower vocabulary, alphabet, punctuation, accent, and grammar categories.",
+    title: "Anne H. Groton · From Alpha to Omega",
+    description: "Greek flashcards are based on Anne H. Groton's From Alpha to Omega. The online source text supplied for this project is the fourth edition; the purchase link below is specifically for the current fifth edition (2025).",
+    sourceLinks: [
+      { label: "Online source text (4th ed.)", href: "https://archive.org/details/fromalphatoomega0000grot/page/28/mode/2up" },
+      { label: "Buy the 5th edition on Amazon", href: "https://www.amazon.com/dp/1647930189" },
+    ],
     href: "/greek",
     linkLabel: "Study Greek",
   },
@@ -23,8 +32,12 @@ export const homeCourses = [
     visual: "latin",
     count: "",
     eyebrow: "Latin",
-    title: "Dickinson vocabulary and Henle grammar",
-    description: "Use one vertical selector for Latin vocabulary, Henle individual forms, and whole charts. Select a whole heading or open it to narrow by part of speech, section, voice, mood/form, or family.",
+    title: "Dickinson Core Vocabulary · Henle Latin Grammar",
+    description: "Latin vocabulary is sourced from Dickinson College Commentaries' Latin Core Vocabulary. Grammar forms and whole charts are based on the uploaded PDF of Robert J. Henle, S.J.'s Henle Latin Grammar.",
+    sourceLinks: [
+      { label: "Dickinson Latin Core Vocabulary", href: "https://dcc.dickinson.edu/latin-core-list1" },
+      { label: "Buy Henle Latin Grammar on Amazon", href: "https://www.amazon.com/dp/0829401121" },
+    ],
     href: "/latin",
     linkLabel: "Study Latin",
   },
@@ -35,6 +48,7 @@ export const homeCourses = [
     eyebrow: "Reading & Audio",
     title: "Follow a passage word by word",
     description: "Save readings, attach audio, navigate sentences, and use timing-based highlighting.",
+    sourceLinks: [] as CourseSourceLink[],
     href: "/reading",
     linkLabel: "Open readings",
   },
@@ -45,6 +59,7 @@ export const homeCourses = [
   eyebrow: string;
   title: string;
   description: string;
+  sourceLinks: readonly CourseSourceLink[];
   href: string;
   linkLabel: string;
 }>;
