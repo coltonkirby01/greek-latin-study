@@ -38,6 +38,11 @@ function transliterateCluster(base: string, marks: string[]) {
   return value;
 }
 
+function normalizeUpsilonDiphthongs(value: string) {
+  const upsilon: Record<string, string> = { y: "u", ý: "ú", ỳ: "ù", ŷ: "û", Y: "U", Ý: "Ú", Ỳ: "Ù", Ŷ: "Û" };
+  return value.replace(/([aeoēAEOĒ])([yýỳŷYÝỲŶ])/gu, (_match, first: string, second: string) => `${first}${upsilon[second] ?? second}`);
+}
+
 /**
  * Produces a compact Classical-Greek pronunciation guide using the same basic
  * reconstructed pronunciation conventions taught in From Alpha to Omega.
@@ -56,5 +61,5 @@ export function classicalGreekPronunciation(text: string) {
     output += transliterateCluster(base, marks);
     index = cursor;
   }
-  return output.normalize("NFC");
+  return normalizeUpsilonDiphthongs(output.normalize("NFC"));
 }
