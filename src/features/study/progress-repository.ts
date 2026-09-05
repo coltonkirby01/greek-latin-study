@@ -4,18 +4,70 @@ import type { DeckProgressEnvelope, ReviewDifficulty, ReviewResult } from "./typ
 
 const localKey = (deckId: string) => `greek-latin-study:deck:${deckId}:v2`;
 function safeParse(raw: string | null) { try { return raw ? JSON.parse(raw) as DeckProgressEnvelope : null; } catch { return null; } }
-function persistableEnvelope(envelope: DeckProgressEnvelope): DeckProgressEnvelope { const { pendingDeletedReviewIds: _pending, ...persisted } = envelope; return persisted; }
-export function loadLocalEnvelope(deckId: string) { return safeParse(localStorage.getItem(localKey(deckId))); }
-export function saveLocalEnvelope(envelope: DeckProgressEnvelope) { const persisted = persistableEnvelope(envelope); localStorage.setItem(localKey(persisted.deckId), JSON.stringify(persisted)); }
+function rawLocalEnvelope(deckId: string) { return safeParse(localStorage.getItem(localKey(deckId))); }
+function uniqueReviewIds(...groups: Array<readonly string[] | undefined>) { return [...new Set(groups.flatMap((group) => group ?? []).filter(Boolean))]; }
+
+export function removeDeletedReviewHistory(envelope: DeckProgressEnvelope, reviewIds: readonly string[]) {
+  const deleted = new Set(reviewIds);
+  if (!deleted.size) return envelope;
+  let envelopeChanged = false;
+  const modes = Object.fromEntries(Object.entries(envelope.modes).map(([studyKey, mode]) => {
+    let modeChanged = false;
+    const cards = Object.fromEntries(Object.entries(mode.cards).map(([cardId, progress]) => {
+      const history = progress.history.filter((review) => !deleted.has(review.id));
+      if (history.length === progress.history.length) return [cardId, progress];
+      modeChanged = true;
+      envelopeChanged = true;
+      return [cardId, { ...progress, history }];
+    }));
+    return [studyKey, modeChanged ? { ...mode, cards } : mode];
+  }));
+  return envelopeChanged ? { ...envelope, modes } : envelope;
+}
+
+function preparedEnvelope(envelope: DeckProgressEnvelope, extraDeletedIds: readonly string[] = [], keepPending = true): DeckProgressEnvelope {
+  const pendingDeletedReviewIds = uniqueReviewIds(envelope.pendingDeletedReviewIds);
+  const deletedReviewIds = uniqueReviewIds(envelope.deletedReviewIds, pendingDeletedReviewIds, extraDeletedIds);
+  const sanitized = removeDeletedReviewHistory(envelope, deletedReviewIds);
+  const { deletedReviewIds: _deleted, pendingDeletedReviewIds: _pending, ...base } = sanitized;
+  return {
+    ...base,
+    ...(deletedReviewIds.length ? { deletedReviewIds } : {}),
+    ...(keepPending && pendingDeletedReviewIds.length ? { pendingDeletedReviewIds } : {}),
+  };
+}
+
+function sameReviewIds(left: readonly string[] | undefined, right: readonly string[] | undefined) {
+  const a = new Set(left ?? []), b = new Set(right ?? []);
+  return a.size === b.size && [...a].every((id) => b.has(id));
+}
+
+export function loadLocalEnvelope(deckId: string) {
+  const local = rawLocalEnvelope(deckId);
+  return local ? preparedEnvelope(local) : null;
+}
+
+export function saveLocalEnvelope(envelope: DeckProgressEnvelope) {
+  const current = rawLocalEnvelope(envelope.deckId);
+  const deletedReviewIds = uniqueReviewIds(current?.deletedReviewIds, current?.pendingDeletedReviewIds);
+  const persisted = preparedEnvelope(envelope, deletedReviewIds);
+  localStorage.setItem(localKey(persisted.deckId), JSON.stringify(persisted));
+}
+
 export function mergeProgressEnvelopes(local: DeckProgressEnvelope | null, remote: DeckProgressEnvelope | null) {
-  if (!local) return remote;
-  if (!remote) return local;
-  const modes = { ...remote.modes };
-  for (const [key, mode] of Object.entries(local.modes)) {
+  const deletedReviewIds = uniqueReviewIds(local?.deletedReviewIds, local?.pendingDeletedReviewIds, remote?.deletedReviewIds, remote?.pendingDeletedReviewIds);
+  const pendingDeletedReviewIds = uniqueReviewIds(local?.pendingDeletedReviewIds, remote?.pendingDeletedReviewIds);
+  const cleanLocal = local ? preparedEnvelope({ ...local, pendingDeletedReviewIds }, deletedReviewIds) : null;
+  const cleanRemote = remote ? preparedEnvelope({ ...remote, pendingDeletedReviewIds }, deletedReviewIds) : null;
+  if (!cleanLocal) return cleanRemote;
+  if (!cleanRemote) return cleanLocal;
+  const modes = { ...cleanRemote.modes };
+  for (const [key, mode] of Object.entries(cleanLocal.modes)) {
     if (!modes[key] || mode.updatedAt > modes[key].updatedAt) modes[key] = mode;
   }
-  return { ...remote, updatedAt: Math.max(local.updatedAt, remote.updatedAt), modes } satisfies DeckProgressEnvelope;
+  return preparedEnvelope({ ...cleanRemote, updatedAt: Math.max(cleanLocal.updatedAt, cleanRemote.updatedAt), modes, pendingDeletedReviewIds }, deletedReviewIds);
 }
+
 export async function loadProgressEnvelope(deckId: string, user: User | null) {
   const local = loadLocalEnvelope(deckId); if (!supabase || !user) return { envelope: local, source: "local" as const, syncError: null };
   const { data, error } = await supabase.from("user_deck_states").select("state, updated_at").eq("user_id", user.id).eq("deck_id", deckId).maybeSingle();
@@ -23,21 +75,39 @@ export async function loadProgressEnvelope(deckId: string, user: User | null) {
   const remote = data?.state as DeckProgressEnvelope | null | undefined, winner = mergeProgressEnvelopes(local, remote ?? null);
   if (winner) {
     saveLocalEnvelope(winner);
-    const needsPush = !remote || Object.entries(winner.modes).some(([key, mode]) => !remote.modes[key] || mode.updatedAt > remote.modes[key].updatedAt);
+    const needsPush = !remote
+      || Object.entries(winner.modes).some(([key, mode]) => !remote.modes[key] || mode.updatedAt > remote.modes[key].updatedAt)
+      || !sameReviewIds(winner.deletedReviewIds, remote.deletedReviewIds)
+      || Boolean(winner.pendingDeletedReviewIds?.length);
     if (needsPush) await saveProgressEnvelope(winner, user);
   }
   return { envelope: winner ?? null, source: remote ? "cloud" as const : "local" as const, syncError: null };
 }
+
 export async function saveProgressEnvelope(envelope: DeckProgressEnvelope, user: User | null) {
-  const pendingDeletedReviewIds = [...new Set(envelope.pendingDeletedReviewIds ?? [])];
-  const persisted = persistableEnvelope(envelope);
-  saveLocalEnvelope(persisted);
+  const current = rawLocalEnvelope(envelope.deckId);
+  const pendingDeletedReviewIds = uniqueReviewIds(current?.pendingDeletedReviewIds, envelope.pendingDeletedReviewIds);
+  const deletedReviewIds = uniqueReviewIds(current?.deletedReviewIds, current?.pendingDeletedReviewIds, envelope.deletedReviewIds, pendingDeletedReviewIds);
+  const localPersisted = preparedEnvelope({ ...envelope, pendingDeletedReviewIds }, deletedReviewIds, true);
+  localStorage.setItem(localKey(localPersisted.deckId), JSON.stringify(localPersisted));
   if (!supabase || !user) return { cloud: false };
-  const { error } = await supabase.from("user_deck_states").upsert({ user_id: user.id, deck_id: persisted.deckId, state: persisted, updated_at: new Date(persisted.updatedAt).toISOString() }, { onConflict: "user_id,deck_id" });
+
+  const cloudPersisted = preparedEnvelope(localPersisted, deletedReviewIds, false);
+  const { error } = await supabase.from("user_deck_states").upsert({ user_id: user.id, deck_id: cloudPersisted.deckId, state: cloudPersisted, updated_at: new Date(cloudPersisted.updatedAt).toISOString() }, { onConflict: "user_id,deck_id" });
   if (error) throw error;
-  if (pendingDeletedReviewIds.length) await deleteReviewEvents(user, pendingDeletedReviewIds);
+  if (pendingDeletedReviewIds.length) {
+    await deleteReviewEvents(user, pendingDeletedReviewIds);
+    const latest = rawLocalEnvelope(envelope.deckId);
+    if (latest) {
+      const completed = new Set(pendingDeletedReviewIds);
+      const remaining = (latest.pendingDeletedReviewIds ?? []).filter((id) => !completed.has(id));
+      const cleaned = preparedEnvelope({ ...latest, pendingDeletedReviewIds: remaining }, deletedReviewIds, true);
+      localStorage.setItem(localKey(cleaned.deckId), JSON.stringify(cleaned));
+    }
+  }
   return { cloud: true };
 }
+
 export async function upsertReviewEvent(user: User | null, event: { id: string; deckId: string; studyKey: string; cardId: string; result: ReviewResult; difficulty: ReviewDifficulty; responseTimeMs: number; reviewedAt: number }) { if (!supabase || !user) return; const { error } = await supabase.from("review_events").upsert({ id: event.id, user_id: user.id, deck_id: event.deckId, study_key: event.studyKey, card_id: event.cardId, result: event.result, difficulty: event.difficulty, response_time_ms: event.responseTimeMs, reviewed_at: new Date(event.reviewedAt).toISOString() }); if (error) throw error; }
 export async function deleteReviewEvent(user: User | null, reviewId: string) { if (!supabase || !user) return; const { error } = await supabase.from("review_events").delete().eq("id", reviewId); if (error) throw error; }
 export async function deleteReviewEvents(user: User | null, reviewIds: string[]) {
