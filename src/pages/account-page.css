@@ -1,11 +1,9 @@
 .account-methods { margin-top: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.55rem; }
 .account-password-form { max-width: 36rem; margin-top: 1rem; }
 .account-password-form .form-submit { justify-self: start; }
-.account-session-manager, .account-session-list, .account-session-copy { display: grid; gap: 0.75rem; }
-.account-session-row { padding: 0.9rem 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr) auto; gap: 0.8rem; align-items: end; border-top: 1px solid var(--border); }
-.account-session-copy small { color: var(--ink-soft); }
+.account-session-manager, .account-session-list, .account-session-copy { display: grid; gap: 0.7rem; }
+.account-session-row { padding: 0.8rem 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.8fr) auto; gap: 0.7rem; align-items: end; border-top: 1px solid var(--border); }
 .account-session-name-field { max-width: none; margin: 0; }
-.account-session-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; }
-.account-delete-session { color: var(--bad); }
-@media (max-width: 900px) { .account-session-row { grid-template-columns: 1fr; align-items: stretch; } .account-session-actions { justify-content: flex-start; } }
-@media (max-width: 620px) { .account-methods { align-items: flex-start; flex-direction: column; } .account-session-actions > * { flex: 1 1 auto; } }
+.account-session-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+@media (max-width: 900px) { .account-session-row { grid-template-columns: 1fr; align-items: stretch; } }
+@media (max-width: 620px) { .account-methods { flex-direction: column; } }
