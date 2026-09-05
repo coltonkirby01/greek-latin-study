@@ -23,11 +23,13 @@ export function studyShortcut({ key, startGateOpen, revealed, result, difficulty
   if (typingTarget) return null;
   if (key === " " && !revealed) return { type: "reveal" };
   if (!revealed) return null;
-  if (key === "1") return { type: "result", value: "right" };
-  if (key === "2") return { type: "result", value: "wrong" };
-  if (key === "3") return { type: "difficulty", value: "easy" };
-  if (key === "4") return { type: "difficulty", value: "medium" };
-  if (key === "5") return { type: "difficulty", value: "hard" };
+
+  const normalized = key.toLowerCase();
+  if (normalized === "r") return { type: "result", value: "right" };
+  if (normalized === "w") return { type: "result", value: "wrong" };
+  if (key === "1") return { type: "difficulty", value: "easy" };
+  if (key === "2") return { type: "difficulty", value: "medium" };
+  if (key === "3") return { type: "difficulty", value: "hard" };
   if (key === "Enter" && result && difficulty) return { type: "save" };
   return null;
 }
