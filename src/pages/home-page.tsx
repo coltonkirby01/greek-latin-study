@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpenText, Cloud, Repeat2, TableProperties } from "lucide-react";
+import { ArrowRight, BookOpenText, Cloud, Repeat2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { homeCourses, type CourseId } from "../config/site";
@@ -7,7 +7,6 @@ import { useAuth } from "../features/auth/auth-context";
 const courseVisuals: Record<CourseId, ReactNode> = {
   greek: <span className="course-glyph">Ἀ</span>,
   latin: <span className="course-glyph">A</span>,
-  henle: <span className="course-icon"><TableProperties /></span>,
   reading: <span className="course-icon"><BookOpenText /></span>,
 };
 
@@ -15,8 +14,8 @@ export function HomePage() {
   const { user } = useAuth();
   return <main className="page-shell home-page">
     <section className="home-intro">
-      <div><p className="eyebrow">Active recall · adaptive review</p><h1>Build a durable memory of Greek and Latin.</h1><p className="home-lede">Reveal each answer from memory, judge your response, and rate its difficulty. Every direction keeps its own history, and slower recall returns a card sooner.</p></div>
-      <div className="method-note"><Repeat2 /><div><strong>One deliberate cycle</strong><span>Recall · reveal · rate · review</span></div></div>
+      <div><p className="eyebrow">Active recall · adaptive review</p><h1>Build a durable memory of Greek and Latin.</h1><p className="home-lede">Greek and Latin each have one study app. Choose exactly what belongs in a session—from several Greek symbol types to a mixture of Latin vocabulary and grammar—then reveal, rate, and review adaptively.</p></div>
+      <div className="method-note"><Repeat2 /><div><strong>One deliberate cycle</strong><span>Choose · recall · reveal · rate · review</span></div></div>
     </section>
     <section className="course-grid">
       {homeCourses.map((course) => <Course key={course.id} {...course} visual={courseVisuals[course.visual]} />)}
