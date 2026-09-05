@@ -2,18 +2,39 @@ import type { DeckDefinition, StudyCard } from "../study/types";
 
 export type HenleSourceCard = { id: string; deck_id: string; section: string; rule: number; title: string; prompt: string; front: string; answer: string; back: string; source_pdf_page: number; tags: string[]; note: string; study_subsection: string; verb_voice_group?: string | null; verb_form_group?: string | null; reverse_front: string; reverse_back: string };
 type HenleSource = { meta: { deck_id: string; title: string; source: string; card_count: number; rule_count: number; included_rules: number[] }; cards: HenleSourceCard[] };
-export type HenleChart = { id: string; rule: number; title: string; section: string; studySubsection: string; voiceGroup: string; items: HenleSourceCard[] };
+export type HenleChart = { id: string; rule: number; title: string; section: string; studySubsection: string; voiceGroup: string; formGroups: string[]; items: HenleSourceCard[] };
 export type LoadedHenle = { source: HenleSource; individualDeck: DeckDefinition; chartDeck: DeckDefinition; charts: HenleChart[] };
 const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\//, "")}`;
 function chartTitle(rule: number, items: HenleSourceCard[]) { if (rule === 334) return "Deponent Verbs — Principal Parts"; if (rule === 345) return "Semi-Deponent Verbs — Principal Parts"; return items[0].title; }
-export function buildHenleCharts(cards: HenleSourceCard[]) { const groups = new Map<number, HenleSourceCard[]>(); for (const card of cards) groups.set(card.rule, [...(groups.get(card.rule) ?? []), card]); return [...groups.entries()].filter(([, items]) => items.length >= 2).map(([rule, items]) => ({ id: `chart-r${rule}`, rule, title: chartTitle(rule, items), section: items[0].section, studySubsection: items[0].study_subsection || "", voiceGroup: items[0].verb_voice_group || "", items })); }
+export function buildHenleCharts(cards: HenleSourceCard[]) {
+  const groups = new Map<number, HenleSourceCard[]>();
+  for (const card of cards) groups.set(card.rule, [...(groups.get(card.rule) ?? []), card]);
+  return [...groups.entries()].filter(([, items]) => items.length >= 2).map(([rule, items]) => ({
+    id: `chart-r${rule}`,
+    rule,
+    title: chartTitle(rule, items),
+    section: items[0].section,
+    studySubsection: items[0].study_subsection || "",
+    voiceGroup: items[0].verb_voice_group || "",
+    formGroups: [...new Set(items.map((item) => item.verb_form_group || "").filter(Boolean))],
+    items,
+  }));
+}
 let promise: Promise<LoadedHenle> | null = null;
 export function loadHenle() {
   promise ??= fetch(assetUrl("data/henle-part1-forms.json"), { cache: "force-cache" }).then(async (response) => {
-    if (!response.ok) throw new Error("The complete Henle deck could not be loaded."); const source = await response.json() as HenleSource;
+    if (!response.ok) throw new Error("The complete Henle deck could not be loaded.");
+    const source = await response.json() as HenleSource;
     if (source.cards.length !== 2_062 || new Set(source.cards.map((card) => card.id)).size !== 2_062 || new Set(source.cards.map((card) => card.rule)).size !== 331) throw new Error("Henle data validation failed: expected 2,062 unique cards from 331 rules.");
-    const individualCards: StudyCard[] = source.cards.map((card) => ({ id: card.id, deckId: "henle-part1-forms", front: card.front, back: card.back, reverseFront: card.reverse_front, reverseBack: card.reverse_back, category: card.section, rank: card.rule, source: source.meta.source, notes: card.note, metadata: { rule: card.rule, title: card.title, prompt: card.prompt, sourcePdfPage: card.source_pdf_page, tags: card.tags, studySubsection: card.study_subsection, voiceGroup: card.verb_voice_group ?? "", formGroup: card.verb_form_group ?? "" } }));
-    const charts = buildHenleCharts(source.cards), chartCards: StudyCard[] = charts.map((chart) => ({ id: chart.id, deckId: "henle-part1-forms", front: chart.title, back: chart.title, category: chart.section, rank: chart.rule, source: source.meta.source, metadata: { chart, rule: chart.rule, studySubsection: chart.studySubsection, voiceGroup: chart.voiceGroup } }));
-    return { source, charts, individualDeck: { id: "henle-part1-forms", slug: "henle", title: "Henle Latin Grammar — Part I: Forms", eyebrow: "Individual forms", description: "All 2,062 supplied form cards from 331 Henle rules, with independent Prompt → Form and Form → Identify progress.", language: "latin", cards: individualCards, supportsReverse: true, sourceNote: source.meta.source }, chartDeck: { id: "henle-part1-forms", slug: "henle", title: "Henle Latin Grammar — Whole Charts", eyebrow: "Whole charts", description: "Reconstruct a complete paradigm before revealing every form. Whole-chart mastery is independent from individual forms.", language: "latin", cards: chartCards, supportsReverse: false, sourceNote: `${charts.length} whole-chart candidates generated from supplied rule groups.` } };
-  }); return promise;
+    const individualCards: StudyCard[] = source.cards.map((card) => ({ id: card.id, deckId: "henle-part1-forms", front: card.front, back: card.back, reverseFront: card.reverse_front, reverseBack: card.reverse_back, category: card.section, rank: card.rule, source: source.meta.source, notes: card.note, metadata: { studySource: "grammar-form", rule: card.rule, title: card.title, prompt: card.prompt, sourcePdfPage: card.source_pdf_page, tags: card.tags, studySubsection: card.study_subsection, voiceGroup: card.verb_voice_group ?? "", formGroup: card.verb_form_group ?? "" } }));
+    const charts = buildHenleCharts(source.cards);
+    const chartCards: StudyCard[] = charts.map((chart) => ({ id: chart.id, deckId: "henle-part1-forms", front: chart.title, back: chart.title, category: chart.section, rank: chart.rule, source: source.meta.source, metadata: { studySource: "grammar-chart", chart, rule: chart.rule, studySubsection: chart.studySubsection, voiceGroup: chart.voiceGroup, formGroups: chart.formGroups } }));
+    return {
+      source,
+      charts,
+      individualDeck: { id: "henle-part1-forms", slug: "henle", title: "Henle Latin Grammar — Part I: Forms", eyebrow: "Individual forms", description: "All 2,062 supplied form cards from 331 Henle rules, with independent Prompt → Form and Form → Identify progress.", language: "latin", cards: individualCards, supportsReverse: true, sourceNote: source.meta.source },
+      chartDeck: { id: "henle-part1-forms", slug: "henle", title: "Henle Latin Grammar — Whole Charts", eyebrow: "Whole charts", description: "Reconstruct a complete paradigm before revealing every form. Whole-chart mastery is independent from individual forms.", language: "latin", cards: chartCards, supportsReverse: false, sourceNote: `${charts.length} whole-chart candidates generated from supplied rule groups.` },
+    };
+  });
+  return promise;
 }
