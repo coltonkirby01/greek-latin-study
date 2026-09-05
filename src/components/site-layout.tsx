@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { primaryNavLinks } from "../config/site";
 import { useAuth } from "../features/auth/auth-context";
+import "./site-layout.css";
 
 function accountInitials(email: string | null | undefined, metadata: Record<string, unknown> | undefined) {
   const name = [metadata?.full_name, metadata?.name].find((value): value is string => typeof value === "string" && value.trim().length > 0);
