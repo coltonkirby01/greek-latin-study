@@ -10,6 +10,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 ## App structure and filtering
 
+- The primary public navigation is Home, Greek, Latin, Stats, and Reading. Stats is a first-class navigation destination, not something users should have to discover only inside a study page.
 - The public study navigation has one Greek app and one Latin app. Do not reintroduce separate Henle, vocabulary, grammar, or Decks apps/pages in the primary navigation.
 - `/henle` is a compatibility redirect into `/latin`; Henle grammar is studied inside the Latin app.
 - Individual imported/custom deck routes under `/decks/:slug` may remain addressable, but there is no standalone `/decks` library page or Decks navigation item.
@@ -23,8 +24,9 @@ Preserve existing study behavior unless the requested change explicitly modifies
 ### Greek selector
 
 - Greek has top-level quick selectors for All Vocabulary and All Grammar; narrower lesson selectors remain independently adjustable.
+- All Grammar includes Lesson 1 Alphabet and Punctuation, Lesson 2 Accent Marks, and all current Lesson 3 grammar paradigms. The only material currently classified as Greek vocabulary is Lesson 3 Vocabulary.
 - Greek filtering is organized by lesson.
-- Lesson 1 contains Alphabet and Punctuation. Alphabet expands to independent Uppercase and Lowercase choices. Alphabet and punctuation are lesson material, not vocabulary.
+- Lesson 1 contains Alphabet and Punctuation. Alphabet expands to independent Uppercase and Lowercase choices. Alphabet and punctuation are Grammar, not vocabulary.
 - Lesson 2 contains Accent Marks. Accent marks are Grammar, not vocabulary.
 - The only current Greek vocabulary source is Lesson 3 Vocabulary.
 - Greek Lesson 3 contains separate Vocabulary and Grammar headings. Lesson 3 Grammar currently contains Present Active Indicative, Present Active Infinitive, and Present Active Imperative from the παιδεύω paradigm.
@@ -36,6 +38,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Latin is a unified study surface. There is exactly one Latin vocabulary source/control: the Dickinson Latin Core Vocabulary. Do not create separate "Latin vocabulary" and "Dickinson vocabulary" boxes for the same source.
 - Latin vocabulary, Henle individual forms, and Henle whole charts can be selected singly or combined in one study pool.
 - Henle Grammar Forms and Henle Whole Charts each have their own compact vertical dropdown and independent filter state, so a user may choose different Part I sections for forms and charts in the same mixed session.
+- Do not put a redundant "Parts of speech" dropdown inside Dickinson Vocabulary or a redundant "Part 1 sections" / "Parts of speech" dropdown inside either Henle source. Once a source is opened, users should reach the meaningful category parents directly.
 - Opening a Henle dropdown may load Henle source data, but opening alone must not select the source.
 - Latin grammar filters are hierarchical and composable. Broad sections can be narrowed by verb family, voice, and form/mood (for example Verbs + Active Voice + Indicative).
 - Henle Part I grammatical sections are Nouns, Adjectives, Adverbs, Numerals, Pronouns, and Verbs. Do not reduce the Henle selector to verbs only.
@@ -62,6 +65,9 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 - A new study session is a performance window layered on top of continuous long-term mastery. Starting a new session must never reset mastery, due dates, intervals, response-time history, or adaptive priorities.
 - Reviews belonging to a normal session carry a stable session ID/start time so sessions can be compared in Stats.
+- Users can deliberately continue a past ranked session. Continuing reuses that session's original ID and start time, while card selection still uses the user's current long-term mastery, due state, speed, accuracy, and adaptive priorities.
+- The study toolbar exposes recent resumable sessions and a distinct New session action. Resuming a session and starting a new one must remain separate operations.
+- A resumed session can use the user's current filter selection; resuming must not restore or overwrite old filter state unless explicitly requested.
 - The Start gate offers a Personalized Warm-up. The default warm-up contains 5 reviewed cards.
 - Warm-up selection is adaptive/personalized and should favor due, slow, difficult, recently missed, or otherwise high-priority cards from the currently selected material.
 - Warm-up reviews DO update the continuous long-term memory bank and scheduling because they are real recall practice.
@@ -115,7 +121,8 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 ## Stats, intrinsic difficulty, and proficiency score
 
-- `/stats` is one unified Stats page covering both Greek and Latin. Greek and Latin study pages link to it.
+- `/stats` is one unified Stats page covering both Greek and Latin and appears in the primary navigation. Greek and Latin study pages may also link to it.
+- Stats text must remain legible in both light and dark themes. Use foreground/muted-foreground text variables for text; do not use a background fill token such as `--muted` as a text color.
 - Stats include per-card total recall time, average/last recall time, accuracy, reviews, mistakes, difficulty ratings, best streak, last review, hardest cards, slowest cards, most reviewed cards, and most improved cards.
 - Stats retain Forward/Reverse separation and include Henle Whole Charts as their own study mode.
 - Stats rank explicit study sessions. Legacy history without explicit session IDs may be grouped into inferred sessions without altering stored data.
@@ -128,11 +135,14 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Stats show overall, Greek, and Latin proficiency plus reviewed difficulty and hardest mastered material.
 - Ranked session scores account for intrinsic difficulty, accuracy, speed, and streaks. Warm-up activity is excluded from ranked session scoring.
 
-## Security and Supabase coordination
+## Security, authentication, and Supabase coordination
 
 - Secrets belong in GitHub/Supabase environment settings, never source or browser code.
 - The committed `.env.production` may contain only the Supabase project URL and modern browser-safe publishable key; never add a secret or service-role key.
 - Database authorization remains enforced by Supabase RLS, even when the UI hides an action.
+- A Google-authenticated user may add email/password sign-in from the Account page by setting a password on the already authenticated Supabase user. This must preserve the same Supabase user ID, progress, sessions, and stats; do not create a second account simply because the user wants another sign-in method.
+- Supabase's same-verified-email identity behavior should be preserved. Never implement custom account merging by moving progress between unrelated user IDs unless explicitly designed and reviewed as a migration.
+- Password-setting UI must require an authenticated user, use Supabase Auth's user update flow, and never expose or persist the password in application storage.
 - After changing the Supabase schema, apply a new numbered migration and regenerate `src/lib/database.types.ts` from the deployed project.
 - Frontend maintainability/performance work should avoid changing `supabase/**`, auth/database types, environment files, migrations, or cloud-data services unless the task explicitly requires it.
 
@@ -160,6 +170,6 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 - Run `npm run check` before proposing or merging code changes.
 - Fix TypeScript, test, and production-build failures caused by the change before completion.
-- For changes affecting timer, grading, Back, direction separation, staged unlocking, priority answers, filtering, mixed-source study, sessions, warm-ups, scoring, or source data, explicitly verify those invariants in addition to the general check.
+- For changes affecting timer, grading, Back, direction separation, staged unlocking, priority answers, filtering, mixed-source study, sessions, warm-ups, scoring, authentication, or source data, explicitly verify those invariants in addition to the general check.
 - Add or update focused regression tests for pure logic whenever practical.
 - Prefer focused changes over broad refactors unless a refactor is necessary for correctness, maintainability, or measured performance.

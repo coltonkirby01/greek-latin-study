@@ -25,9 +25,11 @@ type Candidate = { source: StudySourceDefinition; card: StudyCard };
 type MixedReviewTransaction = ReviewTransaction & { sourceId: string; deckId: string; studyKey: string };
 type SyncStatus = "loading" | "local" | "syncing" | "cloud" | "error";
 type SessionMeta = { id: string; startedAt: number };
+type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number };
 type WarmupMeta = SessionMeta & { remaining: number; total: number };
 const WARMUP_CARDS = 5;
 const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
+const sessionDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 const PropsDefaults = { forward: "Forward", reverse: "Reverse" } as const;
 
@@ -38,6 +40,7 @@ type Props = {
   onDirectionChange?: (direction: StudyDirection) => void;
   directionLabels?: { forward: string; reverse: string };
   resetKey: string;
+  resumeSession?: SessionMeta | null;
   cardMeta?: (card: StudyCard, source: StudySourceDefinition) => string;
   renderFront?: (card: StudyCard, copy: DirectionalCardCopy, source: StudySourceDefinition) => ReactNode;
   renderBack?: (card: StudyCard, copy: DirectionalCardCopy, source: StudySourceDefinition) => ReactNode;
@@ -45,6 +48,39 @@ type Props = {
 };
 
 function candidateKey(candidate: Candidate) { return `${candidate.source.id}:${candidate.card.id}`; }
+function sessionLabel(session: ResumableSession) { return `${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`; }
+
+function collectResumableSessions(sources: StudySourceDefinition[], envelopes: Record<string, DeckProgressEnvelope>) {
+  const sessions = new Map<string, ResumableSession>();
+  for (const source of sources) {
+    const state = envelopes[source.deck.id]?.modes[source.studyKey];
+    if (!state) continue;
+    for (const progress of Object.values(state.cards)) {
+      for (const review of progress.history) {
+        if (!review.sessionId || review.activityKind === "warmup") continue;
+        const startedAt = review.sessionStartedAt ?? review.reviewedAt;
+        const existing = sessions.get(review.sessionId);
+        if (existing) {
+          existing.startedAt = Math.min(existing.startedAt, startedAt);
+          existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
+          existing.reviews += 1;
+        } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, lastReviewedAt: review.reviewedAt, reviews: 1 });
+      }
+    }
+  }
+  return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
+}
+
+function appendResumableReview(sessions: ResumableSession[], meta: SessionMeta, reviewedAt: number) {
+  const next = sessions.map((item) => ({ ...item }));
+  const existing = next.find((item) => item.id === meta.id);
+  if (existing) {
+    existing.startedAt = Math.min(existing.startedAt, meta.startedAt);
+    existing.lastReviewedAt = Math.max(existing.lastReviewedAt, reviewedAt);
+    existing.reviews += 1;
+  } else next.push({ ...meta, lastReviewedAt: reviewedAt, reviews: 1 });
+  return next.sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
+}
 
 function availableCards(source: StudySourceDefinition, state: StudyModeState) {
   if (!source.deck.staged) return source.cards;
@@ -71,7 +107,7 @@ function aggregateStats(candidates: Candidate[], states: Map<string, StudyModeSt
   return { available: candidates.length, reviewed, accuracy: totalReviews ? rightReviews / totalReviews : null, everWrong, markedHard, averageResponseTimeMs: responseCount ? responseTotal / responseCount : 0, mastered, totalReviews, bestStreak };
 }
 
-export function MultiSourceStudySession({ deck, sources, direction, onDirectionChange, directionLabels = PropsDefaults, resetKey, cardMeta, renderFront, renderBack, priorityPrompt }: Props) {
+export function MultiSourceStudySession({ deck, sources, direction, onDirectionChange, directionLabels = PropsDefaults, resetKey, resumeSession, cardMeta, renderFront, renderBack, priorityPrompt }: Props) {
   const { user } = useAuth();
   const [envelopes, setEnvelopes] = useState<Record<string, DeckProgressEnvelope>>({});
   const envelopesRef = useRef<Record<string, DeckProgressEnvelope>>({});
@@ -81,9 +117,10 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const [current, setCurrent] = useState<Candidate | null>(null);
   const [revealed, setRevealed] = useState(false), [reviewFront, setReviewFront] = useState(false), [result, setResult] = useState<ReviewResult | null>(null), [difficulty, setDifficulty] = useState<ReviewDifficulty | null>(null);
   const [capturedTimeMs, setCapturedTimeMs] = useState<number | null>(null), [lastTransaction, setLastTransaction] = useState<MixedReviewTransaction | null>(null), [editingTransaction, setEditingTransaction] = useState<MixedReviewTransaction | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(() => resumeSession ? "Continuing the selected past session. Your long-term memory and adaptive priorities are unchanged." : null);
   const [backtracking, setBacktracking] = useState(false), [startGateOpen, setStartGateOpen] = useState(true);
-  const [session, setSession] = useState<SessionMeta>(makeSession);
+  const [session, setSession] = useState<SessionMeta>(() => resumeSession ?? makeSession());
+  const [resumableSessions, setResumableSessions] = useState<ResumableSession[]>([]);
   const [warmup, setWarmup] = useState<WarmupMeta | null>(null);
 
   const deckIdsKey = useMemo(() => [...new Set(sources.map((source) => source.deck.id))].sort().join("|"), [sources]);
@@ -142,6 +179,13 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
       saveMode(source, createModeState(source.deck.id, source.studyKey, source.deck.cards.length, source.deck.staged));
     }
   }, [ready, saveMode, selectionSignature, sources]);
+
+  useEffect(() => {
+    if (!ready) return;
+    setResumableSessions(collectResumableSessions(sources, envelopesRef.current));
+    // Re-index only when the selected pool/direction changes or progress first loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, selectionSignature]);
 
   function allCandidates() {
     const items: Candidate[] = [];
@@ -219,7 +263,21 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
   function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!current) return; resetUi(); setStartGateOpen(true); const selected = chooseNext(current, next, Boolean(warmup)); if (selected) present(selected); }
   function skip() { if (!current || editingTransaction) return; const previous = current; resetUi(); const selected = chooseNext(previous, selectionMode, Boolean(warmup)); if (selected) present(selected); }
+  function clearResumeUrl() {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("session") && !url.searchParams.has("sessionStartedAt")) return;
+    url.searchParams.delete("session"); url.searchParams.delete("sessionStartedAt");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  function continueSession(id: string) {
+    const previous = resumableSessions.find((item) => item.id === id);
+    if (!previous) return;
+    clearResumeUrl();
+    setWarmup(null); setSession({ id: previous.id, startedAt: previous.startedAt }); setLastTransaction(null); resetUi(); setStartGateOpen(true);
+    setNotice(`Continuing session from ${sessionLabel(previous)}. Adaptive review still uses your full long-term history.`);
+  }
   function startNewSession() {
+    clearResumeUrl();
     setWarmup(null); setSession(makeSession()); setLastTransaction(null); resetUi(); setStartGateOpen(true);
     const selected = chooseNext(current);
     if (selected) present(selected);
@@ -257,6 +315,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     const transaction: MixedReviewTransaction = { reviewId, cardId: current.card.id, result, difficulty, responseTimeMs, beforeState, sourceId: source.id, deckId: source.deck.id, studyKey: source.studyKey, sessionId, sessionStartedAt, activityKind };
     const corrected = Boolean(editingTransaction), unlocked = next.lastUnlock?.at === reviewedAt ? next.lastUnlock : null;
     saveMode(source, next, { review: transaction }); setLastTransaction(transaction); resetUi();
+    if (!corrected && activityKind === "study") setResumableSessions((currentSessions) => appendResumableReview(currentSessions, { id: sessionId, startedAt: sessionStartedAt }, reviewedAt));
 
     if (warmup && !editingTransaction) {
       if (warmup.remaining <= 1) {
@@ -310,6 +369,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const currentMeta = cardMeta?.(current.card, current.source);
   const showingAnswer = revealed && !reviewFront;
   const gated = startGateOpen && !revealed && !editingTransaction;
+  const selectedPastSession = resumableSessions.some((item) => item.id === session.id) ? session.id : "";
 
   return <div className="study-grid" data-testid="study-session" data-study-key={current.source.studyKey}>
     <section className={`study-panel panel-surface ${gated ? "is-gated" : ""}`} aria-label={`${deck.title} study card`}>
@@ -318,6 +378,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
         <div className="toolbar-control-group">
           {onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
+          {resumableSessions.length > 0 && <label className="compact-select-label"><span className="sr-only">Continue past session</span><select value={selectedPastSession} onChange={(event) => event.target.value && continueSession(event.target.value)}><option value="">Continue past session…</option>{resumableSessions.map((item) => <option key={item.id} value={item.id}>{sessionLabel(item)}</option>)}</select></label>}
           <button type="button" className="small-outline-button" onClick={startNewSession} disabled={Boolean(editingTransaction)}>New session</button>
           <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || Boolean(editingTransaction) || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
