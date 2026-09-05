@@ -2,20 +2,25 @@
   position: relative;
 }
 
+.study-panel.is-gated .study-toolbar {
+  position: relative;
+  z-index: 30;
+}
+
 .study-start-gate {
   position: absolute;
   inset: 0;
   z-index: 20;
   display: grid;
   place-items: center;
-  padding: 1rem;
+  padding: 5.25rem 1rem 1rem;
   border-radius: inherit;
   background: color-mix(in srgb, var(--background) 78%, transparent);
   backdrop-filter: blur(6px);
 }
 
 .study-start-card {
-  width: min(420px, 100%);
+  width: min(440px, 100%);
   padding: 1.5rem;
   display: grid;
   gap: 0.85rem;
@@ -42,13 +47,27 @@
   color: var(--ink-soft);
 }
 
-.study-start-button {
+.study-start-actions {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.study-start-button,
+.study-warmup-button {
   min-height: 48px;
+}
+
+.study-start-button {
   margin-top: 0.2rem;
   border-radius: 0.75rem;
   background: var(--burgundy);
   color: var(--primary-foreground);
   font-weight: 800;
+}
+
+.study-warmup-button {
+  width: 100%;
+  justify-content: center;
 }
 
 .study-start-card > span {
