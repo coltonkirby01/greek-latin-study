@@ -115,7 +115,7 @@ export function AccountSessionManager({ user }: { user: User }) {
             <strong>{currentName}</strong>
             <small>{session.sources.join(" + ")} · {sessionDateFormatter.format(session.startedAt)} · {session.reviews} review{session.reviews === 1 ? "" : "s"}</small>
           </div>
-          <label className="account-session-name-field"><span>Custom session name</span><input value={draftName} maxLength={80} onChange={(event) => setDraftNames((current) => ({ ...current, [session.id]: event.target.value }))} /></label>
+          <div className="auth-form account-session-name-field"><label><span>Custom session name</span><input value={draftName} maxLength={80} onChange={(event) => setDraftNames((current) => ({ ...current, [session.id]: event.target.value }))} /></label></div>
           <div className="account-session-actions">
             <button className="secondary-button" type="button" disabled={busy || !draftName.trim() || draftName.trim() === currentName} onClick={() => void saveName(session)}>{busy ? "Saving…" : "Save name"}</button>
             <Link className="secondary-button" to={continueHref(session)}>Continue</Link>
