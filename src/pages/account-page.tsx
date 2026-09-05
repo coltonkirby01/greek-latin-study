@@ -2,11 +2,18 @@ import { Cloud, Download, FileUp, KeyRound, LogOut, ShieldCheck } from "lucide-r
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../features/auth/auth-context";
 import { exportProgress, importProgressFile } from "../features/study/legacy-import";
+import { AccountSessionManager } from "../features/study/account-session-manager";
 import { loadLocalEnvelope, loadProgressEnvelope, replaceLocalEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";
 import "./account-page.css";
 
 type View = "signin" | "signup" | "reset";
-const deckNames = [["greek-i", "Greek I"], ["dickinson-latin-core", "Dickinson Latin"], ["henle-part1-forms", "Henle Grammar"]] as const;
+const deckNames = [
+  ["greek-i", "Greek Lessons 1–2"],
+  ["alpha-omega-lesson3-vocab", "Greek Lesson 3 Vocabulary"],
+  ["alpha-omega-lesson3-grammar", "Greek Lesson 3 Grammar"],
+  ["dickinson-latin-core", "Dickinson Latin"],
+  ["henle-part1-forms", "Henle Grammar"],
+] as const;
 function download(name: string, value: unknown) { const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], { type: "application/json" })), link = document.createElement("a"); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url); }
 
 export function AccountPage() {
@@ -86,6 +93,8 @@ export function AccountPage() {
           <button className="primary-button form-submit" disabled={working}>{working ? "Saving…" : providers.has("email") ? "Change password" : "Enable email + password sign-in"}</button>
         </form>
       </section>
+
+      <AccountSessionManager user={auth.user} />
 
       <section className="account-activity panel-surface">
         <p className="eyebrow">Portable by design</p><h2>Progress backup &amp; migration</h2><p className="form-help">Import this app's backup or a Henle v4 backup. Directional histories remain independent.</p>
