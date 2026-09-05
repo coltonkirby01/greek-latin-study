@@ -24,8 +24,8 @@ export type StudySourceDefinition = {
 type Candidate = { source: StudySourceDefinition; card: StudyCard };
 type MixedReviewTransaction = ReviewTransaction & { sourceId: string; deckId: string; studyKey: string };
 type SyncStatus = "loading" | "local" | "syncing" | "cloud" | "error";
-type SessionMeta = { id: string; startedAt: number };
-type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number };
+type SessionMeta = { id: string; startedAt: number; name?: string };
+type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number; sourceLabels: string[] };
 type WarmupMeta = SessionMeta & { remaining: number; total: number };
 const WARMUP_CARDS = 5;
 const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
@@ -48,7 +48,11 @@ type Props = {
 };
 
 function candidateKey(candidate: Candidate) { return `${candidate.source.id}:${candidate.card.id}`; }
-function sessionLabel(session: ResumableSession) { return `${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`; }
+function sessionLabel(session: ResumableSession, language: string) {
+  const focus = session.sourceLabels.length === 1 ? session.sourceLabels[0] : session.sourceLabels.length ? "Mixed study" : "Study";
+  const name = session.name?.trim() || `${language} · ${focus}`;
+  return `${name} · ${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`;
+}
 
 function collectResumableSessions(sources: StudySourceDefinition[], envelopes: Record<string, DeckProgressEnvelope>) {
   const sessions = new Map<string, ResumableSession>();
@@ -64,21 +68,25 @@ function collectResumableSessions(sources: StudySourceDefinition[], envelopes: R
           existing.startedAt = Math.min(existing.startedAt, startedAt);
           existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
           existing.reviews += 1;
-        } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, lastReviewedAt: review.reviewedAt, reviews: 1 });
+          if (!existing.sourceLabels.includes(source.label)) existing.sourceLabels.push(source.label);
+          if (review.sessionName?.trim()) existing.name = review.sessionName.trim();
+        } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, name: review.sessionName?.trim() || undefined, lastReviewedAt: review.reviewedAt, reviews: 1, sourceLabels: [source.label] });
       }
     }
   }
   return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
 }
 
-function appendResumableReview(sessions: ResumableSession[], meta: SessionMeta, reviewedAt: number) {
-  const next = sessions.map((item) => ({ ...item }));
+function appendResumableReview(sessions: ResumableSession[], meta: SessionMeta, reviewedAt: number, sourceLabel: string) {
+  const next = sessions.map((item) => ({ ...item, sourceLabels: [...item.sourceLabels] }));
   const existing = next.find((item) => item.id === meta.id);
   if (existing) {
     existing.startedAt = Math.min(existing.startedAt, meta.startedAt);
     existing.lastReviewedAt = Math.max(existing.lastReviewedAt, reviewedAt);
     existing.reviews += 1;
-  } else next.push({ ...meta, lastReviewedAt: reviewedAt, reviews: 1 });
+    if (meta.name) existing.name = meta.name;
+    if (!existing.sourceLabels.includes(sourceLabel)) existing.sourceLabels.push(sourceLabel);
+  } else next.push({ ...meta, lastReviewedAt: reviewedAt, reviews: 1, sourceLabels: [sourceLabel] });
   return next.sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
 }
 
@@ -273,8 +281,8 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     const previous = resumableSessions.find((item) => item.id === id);
     if (!previous) return;
     clearResumeUrl();
-    setWarmup(null); setSession({ id: previous.id, startedAt: previous.startedAt }); setLastTransaction(null); resetUi(); setStartGateOpen(true);
-    setNotice(`Continuing session from ${sessionLabel(previous)}. Adaptive review still uses your full long-term history.`);
+    setWarmup(null); setSession({ id: previous.id, startedAt: previous.startedAt, name: previous.name }); setLastTransaction(null); resetUi(); setStartGateOpen(true);
+    setNotice(`Continuing ${sessionLabel(previous, deck.title)}. Adaptive review still uses your full long-term history.`);
   }
   function startNewSession() {
     clearResumeUrl();
@@ -309,13 +317,13 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     const beforeState = editingTransaction?.beforeState ?? structuredClone(state);
     const activityKind: StudyActivityKind = editingTransaction?.activityKind ?? (warmup ? "warmup" : "study");
     const activeMeta = activityKind === "warmup" && warmup ? warmup : session;
-    const sessionId = editingTransaction?.sessionId ?? activeMeta.id, sessionStartedAt = editingTransaction?.sessionStartedAt ?? activeMeta.startedAt;
-    let next = recordReview(state, current.card, { id: reviewId, result, difficulty, responseTimeMs, reviewedAt, sessionId, sessionStartedAt, activityKind });
+    const sessionId = editingTransaction?.sessionId ?? activeMeta.id, sessionStartedAt = editingTransaction?.sessionStartedAt ?? activeMeta.startedAt, sessionName = editingTransaction?.sessionName ?? activeMeta.name;
+    let next = recordReview(state, current.card, { id: reviewId, result, difficulty, responseTimeMs, reviewedAt, sessionId, sessionStartedAt, sessionName, activityKind });
     next = maybeUnlockNextBatch(next, source.deck.cards, source.deck.staged, reviewedAt);
-    const transaction: MixedReviewTransaction = { reviewId, cardId: current.card.id, result, difficulty, responseTimeMs, beforeState, sourceId: source.id, deckId: source.deck.id, studyKey: source.studyKey, sessionId, sessionStartedAt, activityKind };
+    const transaction: MixedReviewTransaction = { reviewId, cardId: current.card.id, result, difficulty, responseTimeMs, beforeState, sourceId: source.id, deckId: source.deck.id, studyKey: source.studyKey, sessionId, sessionStartedAt, sessionName, activityKind };
     const corrected = Boolean(editingTransaction), unlocked = next.lastUnlock?.at === reviewedAt ? next.lastUnlock : null;
     saveMode(source, next, { review: transaction }); setLastTransaction(transaction); resetUi();
-    if (!corrected && activityKind === "study") setResumableSessions((currentSessions) => appendResumableReview(currentSessions, { id: sessionId, startedAt: sessionStartedAt }, reviewedAt));
+    if (!corrected && activityKind === "study") setResumableSessions((currentSessions) => appendResumableReview(currentSessions, { id: sessionId, startedAt: sessionStartedAt, name: sessionName }, reviewedAt, source.label));
 
     if (warmup && !editingTransaction) {
       if (warmup.remaining <= 1) {
@@ -370,6 +378,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const showingAnswer = revealed && !reviewFront;
   const gated = startGateOpen && !revealed && !editingTransaction;
   const selectedPastSession = resumableSessions.some((item) => item.id === session.id) ? session.id : "";
+  const sessionControlValue = selectedPastSession || "__current__";
 
   return <div className="study-grid" data-testid="study-session" data-study-key={current.source.studyKey}>
     <section className={`study-panel panel-surface ${gated ? "is-gated" : ""}`} aria-label={`${deck.title} study card`}>
@@ -378,8 +387,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
         <div className="toolbar-control-group">
           {onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
-          {resumableSessions.length > 0 && <label className="compact-select-label"><span className="sr-only">Continue past session</span><select value={selectedPastSession} onChange={(event) => event.target.value && continueSession(event.target.value)}><option value="">Continue past session…</option>{resumableSessions.map((item) => <option key={item.id} value={item.id}>{sessionLabel(item)}</option>)}</select></label>}
-          <button type="button" className="small-outline-button" onClick={startNewSession} disabled={Boolean(editingTransaction)}>New session</button>
+          <label className="compact-select-label"><span className="sr-only">Study session</span><select value={sessionControlValue} disabled={Boolean(editingTransaction)} onChange={(event) => { const value = event.target.value; if (value === "__new__") startNewSession(); else if (value !== "__current__") continueSession(value); }}><option value="__current__">Current session · {sessionDateFormatter.format(session.startedAt)}</option><option value="__new__">Start new session</option>{resumableSessions.map((item) => <option key={item.id} value={item.id}>{sessionLabel(item, deck.title)}</option>)}</select></label>
           <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || Boolean(editingTransaction) || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
         </div>
