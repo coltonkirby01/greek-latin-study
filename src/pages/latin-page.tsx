@@ -68,9 +68,19 @@ function HenleSourceFilters({ cards, filters, setFilters, active, onActivate }: 
     setFilters(next);
   }
 
+  function addVerbSubset(key: "voices" | "formGroups" | "verbSubsections", values: readonly string[]) {
+    if (!active) { activateOnly(key, values); return; }
+    setFilters((current) => ({ ...current, sections: setValues(current.sections, allSections, ["Verbs"], true), [key]: new Set(values) }));
+  }
+
+  function selectAllVerbDimension(key: "voices" | "formGroups" | "verbSubsections") {
+    if (!active) onActivate();
+    setFilters((current) => ({ ...current, sections: setValues(current.sections, allSections, ["Verbs"], true), [key]: null }));
+  }
+
   function change(key: keyof GrammarSelections, allValues: readonly string[], values: readonly string[], checked: boolean) {
     if (!active && checked) { activateOnly(key, values); return; }
-    if ((key !== "sections") && !verbsIncluded && checked) { activateOnly(key, values); return; }
+    if (key !== "sections" && !verbsIncluded && checked) { addVerbSubset(key, values); return; }
     setFilters((current) => ({ ...current, [key]: setValues(current[key], allValues, values, checked) }));
   }
 
@@ -103,7 +113,7 @@ function HenleSourceFilters({ cards, filters, setFilters, active, onActivate }: 
         }}
       >
         <FilterDisclosure title="Voice" summary={`${voiceState.selectedCount} of ${allVoices.length} selected`} nested checked={voiceState.checked} mixed={voiceState.mixed} onCheckedChange={(checked) => {
-          if (!verbsIncluded && checked) { onActivate(); setFilters({ ...blankGrammarSelections(), sections: new Set(["Verbs"]) }); return; }
+          if (!verbsIncluded && checked) { selectAllVerbDimension("voices"); return; }
           setFilters((current) => ({ ...current, voices: checked ? null : new Set() }));
         }}>
           <FilterSection title="Voice" description="Choose one voice, several voices, or all of them.">
@@ -112,7 +122,7 @@ function HenleSourceFilters({ cards, filters, setFilters, active, onActivate }: 
         </FilterDisclosure>
 
         <FilterDisclosure title="Mood / form" summary={`${formState.selectedCount} of ${allFormGroups.length} selected`} nested checked={formState.checked} mixed={formState.mixed} onCheckedChange={(checked) => {
-          if (!verbsIncluded && checked) { onActivate(); setFilters({ ...blankGrammarSelections(), sections: new Set(["Verbs"]) }); return; }
+          if (!verbsIncluded && checked) { selectAllVerbDimension("formGroups"); return; }
           setFilters((current) => ({ ...current, formGroups: checked ? null : new Set() }));
         }}>
           <FilterSection title="Mood / form" description="For example, choose Indicative alone or combine several forms.">
@@ -121,7 +131,7 @@ function HenleSourceFilters({ cards, filters, setFilters, active, onActivate }: 
         </FilterDisclosure>
 
         <FilterDisclosure title="Verb family" summary={`${familyState.selectedCount} of ${allSubsections.length} selected`} nested checked={familyState.checked} mixed={familyState.mixed} onCheckedChange={(checked) => {
-          if (!verbsIncluded && checked) { onActivate(); setFilters({ ...blankGrammarSelections(), sections: new Set(["Verbs"]) }); return; }
+          if (!verbsIncluded && checked) { selectAllVerbDimension("verbSubsections"); return; }
           setFilters((current) => ({ ...current, verbSubsections: checked ? null : new Set() }));
         }}>
           <FilterSection title="Verb family" description="Optionally narrow by conjugation or special verb family.">
