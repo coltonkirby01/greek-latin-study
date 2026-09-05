@@ -34,16 +34,17 @@ type FilterDisclosureProps = {
   checked?: boolean;
   mixed?: boolean;
   onCheckedChange?: (checked: boolean) => void;
+  onOpenChange?: (open: boolean) => void;
   count?: number;
 };
 
-export function FilterDisclosure({ title, summary, children, nested = false, checked, mixed = false, onCheckedChange, count }: FilterDisclosureProps) {
+export function FilterDisclosure({ title, summary, children, nested = false, checked, mixed = false, onCheckedChange, onOpenChange, count }: FilterDisclosureProps) {
   const checkboxRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (checkboxRef.current) checkboxRef.current.indeterminate = mixed;
   }, [mixed]);
 
-  return <details className={`filter-disclosure ${nested ? "is-nested" : ""}`}>
+  return <details className={`filter-disclosure ${nested ? "is-nested" : ""}`} onToggle={(event) => onOpenChange?.(event.currentTarget.open)}>
     <summary>
       <span className="filter-disclosure-leading">
         {onCheckedChange && <input

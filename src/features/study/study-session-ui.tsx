@@ -8,35 +8,41 @@ type Priority = Array<{ card: StudyCard; progress: CardProgress; score: number }
 
 function percent(value: number | null) { return value === null ? "—" : `${(value * 100).toFixed(value >= 0.995 ? 0 : 1)}%`; }
 
-export function StudyStartGate({ onStart }: { onStart: () => void }) {
-  return <div className="study-start-gate" role="dialog" aria-modal="true" aria-label="Start flashcard timing">
+export function StudyStartGate({ onStart, onWarmup }: { onStart: () => void; onWarmup?: () => void }) {
+  return <div className="study-start-gate" role="region" aria-label="Start flashcard timing">
     <div className="study-start-card">
       <p className="eyebrow">Timer paused</p>
       <h2>Ready?</h2>
-      <p>The flashcard timer will begin only when you start.</p>
-      <button type="button" className="primary-button study-start-button" onClick={onStart}>Start</button>
-      <span>or press any key to begin</span>
+      <p>Choose direction or card order above while paused, then begin when ready.</p>
+      <div className="study-start-actions">
+        <button type="button" className="primary-button study-start-button" onClick={onStart}>Start</button>
+        {onWarmup && <button type="button" className="small-outline-button study-warmup-button" onClick={onWarmup}>Personalized warm-up · 5 cards</button>}
+      </div>
+      <span>or press any key outside the study controls to begin</span>
     </div>
   </div>;
 }
 
-export function StudyRatingControls({ revealed, result, difficulty, editing, onReveal, onResult, onDifficulty, onSave }: {
+export function StudyRatingControls({ revealed, result, difficulty, editing, onReveal, onFlip, onResult, onDifficulty, onSave }: {
   revealed: boolean;
   result: ReviewResult | null;
   difficulty: ReviewDifficulty | null;
   editing: boolean;
   onReveal: () => void;
+  onFlip: () => void;
   onResult: (value: ReviewResult) => void;
   onDifficulty: (value: ReviewDifficulty) => void;
   onSave: () => void;
 }) {
+  const difficultyKeys: Record<ReviewDifficulty, string> = { easy: "1", medium: "2", hard: "3" };
   return <div className="study-controls">
     {!revealed ? <button className="primary-button study-primary" type="button" onClick={onReveal}>Reveal Answer <kbd>Space</kbd></button> : <>
+      <button className="small-outline-button" type="button" onClick={onFlip}>Flip question / answer <kbd>Enter</kbd></button>
       <div className="rating-grid">
-        <fieldset className="rating-box"><legend>Did you get it right?</legend><div className="choice-row two-choices"><button type="button" className="rating-choice right-choice" aria-pressed={result === "right"} onClick={() => onResult("right")}>Right <kbd>1</kbd></button><button type="button" className="rating-choice wrong-choice" aria-pressed={result === "wrong"} onClick={() => onResult("wrong")}>Wrong <kbd>2</kbd></button></div></fieldset>
-        <fieldset className="rating-box"><legend>How difficult was it?</legend><div className="choice-row three-choices">{(["easy", "medium", "hard"] as ReviewDifficulty[]).map((value, index) => <button key={value} type="button" className="rating-choice" aria-pressed={difficulty === value} onClick={() => onDifficulty(value)}>{value[0].toUpperCase() + value.slice(1)} <kbd>{index + 3}</kbd></button>)}</div></fieldset>
+        <fieldset className="rating-box"><legend>Did you get it right?</legend><div className="choice-row two-choices"><button type="button" className="rating-choice right-choice" aria-pressed={result === "right"} onClick={() => onResult("right")}>Right <kbd>R</kbd></button><button type="button" className="rating-choice wrong-choice" aria-pressed={result === "wrong"} onClick={() => onResult("wrong")}>Wrong <kbd>W</kbd></button></div></fieldset>
+        <fieldset className="rating-box"><legend>How difficult was it?</legend><div className="choice-row three-choices">{(["easy", "medium", "hard"] as ReviewDifficulty[]).map((value) => <button key={value} type="button" className="rating-choice" aria-pressed={difficulty === value} onClick={() => onDifficulty(value)}>{value[0].toUpperCase() + value.slice(1)} <kbd>{difficultyKeys[value]}</kbd></button>)}</div></fieldset>
       </div>
-      <button className="primary-button study-primary" type="button" disabled={!result || !difficulty} onClick={onSave}>{editing ? "Save Corrected Grade" : "Save & Next"} <kbd>Enter</kbd></button>
+      <button className="primary-button study-primary" type="button" disabled={!result || !difficulty} onClick={onSave}>{editing ? "Save Corrected Grade" : "Save & Next"} <kbd>Space</kbd></button>
     </>}
   </div>;
 }

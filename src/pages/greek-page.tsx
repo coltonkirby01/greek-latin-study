@@ -31,8 +31,8 @@ const alphabetKeys = [keys.uppercase, keys.lowercase] as const;
 const lesson2Keys = [keys.accents] as const;
 const lesson3GrammarKeys = [keys.presentActiveIndicative, keys.presentActiveInfinitive, keys.presentActiveImperative] as const;
 const lesson3Keys = [keys.lesson3Vocabulary, ...lesson3GrammarKeys] as const;
-const allVocabularyKeys = [keys.uppercase, keys.lowercase, keys.lesson3Vocabulary] as const;
-const allGrammarKeys = lesson3GrammarKeys;
+const allVocabularyKeys = [keys.lesson3Vocabulary] as const;
+const allGrammarKeys = [keys.accents, ...lesson3GrammarKeys] as const;
 
 const grammarCategoryByKey = new Map<string, string>([
   [keys.presentActiveIndicative, "Present Active Indicative"],
@@ -114,15 +114,15 @@ export function GreekPage() {
   return <main className="page-shell study-page">
     <div className="study-page-heading">
       <div><p className="eyebrow">Lessons · vocabulary · grammar</p><h1>Greek</h1></div>
-      <p>Select entire headings without opening them, or use each chevron only when you want to narrow a lesson. Vocabulary and grammar can be mixed in the same adaptive session.</p>
+      <p>Select entire headings without opening them, or open any unchecked heading to choose individual children. Lesson 3 is the current vocabulary source; accent marks and paradigms are grammar.</p>
     </div>
     {!user && <div className="guest-banner"><span>You are studying as a guest. Progress stays on this device.</span><Link to="/account">Sign in to sync</Link></div>}
     {error && <div className="inline-alert">{error}</div>}
 
-    {decks && <StudyFilterMenu summary={`${selectedCards.length} cards in the current pool`} detail="The checkbox on every closed heading selects or clears everything beneath it. Open a heading only to customize its children.">
-      <FilterSection title="Quick select" description="Select all vocabulary or all grammar across the lessons currently in the app.">
-        <FilterCheckbox label="All Vocabulary" checked={vocabularyState.checked} onChange={(checked) => setSelected((current) => updateSet(current, allVocabularyKeys, checked))} hint={vocabularyState.mixed ? "Some vocabulary selected" : "Alphabet plus Lesson 3 vocabulary"} />
-        <FilterCheckbox label="All Grammar" checked={grammarState.checked} onChange={(checked) => setSelected((current) => updateSet(current, allGrammarKeys, checked))} hint={grammarState.mixed ? "Some grammar selected" : "All Lesson 3 grammar paradigms"} />
+    {decks && <StudyFilterMenu summary={`${selectedCards.length} cards in the current pool`} detail="A parent checkbox is only a select-all shortcut. You can expand an unchecked heading and select any child independently; changing filters never erases stored progress.">
+      <FilterSection title="Quick select" description="Vocabulary and grammar are classified by the course material, not by the visual form of the prompt.">
+        <FilterCheckbox label="All Vocabulary" checked={vocabularyState.checked} mixed={vocabularyState.mixed} onChange={(checked) => setSelected((current) => updateSet(current, allVocabularyKeys, checked))} hint="Lesson 3 vocabulary" />
+        <FilterCheckbox label="All Grammar" checked={grammarState.checked} mixed={grammarState.mixed} onChange={(checked) => setSelected((current) => updateSet(current, allGrammarKeys, checked))} hint="Lesson 2 accent marks + Lesson 3 paradigms" />
       </FilterSection>
 
       <FilterDisclosure
@@ -133,7 +133,7 @@ export function GreekPage() {
         onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson1Keys, checked))}
       >
         <FilterDisclosure
-          title="Alphabet / Vocabulary"
+          title="Alphabet"
           summary={`${alphabetState.selectedCount} of ${alphabetKeys.length} cases selected`}
           count={countFoundation(categories.uppercase) + countFoundation(categories.lowercase)}
           nested
@@ -151,12 +151,12 @@ export function GreekPage() {
 
       <FilterDisclosure
         title="Lesson 2"
-        summary="Accent marks"
+        summary="Grammar · accent marks"
         checked={lesson2State.checked}
         mixed={lesson2State.mixed}
         onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson2Keys, checked))}
       >
-        <FilterCheckbox label="Accent marks" count={countFoundation(categories.accents)} checked={selected.has(keys.accents)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.accents], checked))} />
+        <FilterCheckbox label="Accent marks" count={countFoundation(categories.accents)} checked={selected.has(keys.accents)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.accents], checked))} hint="Grammar" />
       </FilterDisclosure>
 
       <FilterDisclosure
