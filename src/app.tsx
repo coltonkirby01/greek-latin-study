@@ -5,7 +5,7 @@ import { SiteLayout } from "./components/site-layout";
 const HomePage = lazy(async () => ({ default: (await import("./pages/home-page")).HomePage }));
 const GreekPage = lazy(async () => ({ default: (await import("./pages/greek-page")).GreekPage }));
 const LatinPage = lazy(async () => ({ default: (await import("./pages/latin-page")).LatinPage }));
-const StatsPage = lazy(async () => ({ default: (await import("./pages/stats-page")).StatsPage }));
+const StatsHubPage = lazy(async () => ({ default: (await import("./pages/stats-hub-page")).StatsHubPage }));
 const DynamicDeckPage = lazy(async () => ({ default: (await import("./pages/dynamic-deck-page")).DynamicDeckPage }));
 const ReadingPage = lazy(async () => ({ default: (await import("./pages/reading-page")).ReadingPage }));
 const AccountPage = lazy(async () => ({ default: (await import("./pages/account-page")).AccountPage }));
@@ -24,7 +24,7 @@ export function App() {
           <Route index element={<HomePage />} />
           <Route path="greek" element={<GreekPage />} />
           <Route path="latin" element={<LatinPage />} />
-          <Route path="stats" element={<StatsPage />} />
+          <Route path="stats" element={<StatsHubPage />} />
           <Route path="henle" element={<Navigate to="/latin" replace />} />
           <Route path="decks/:slug" element={<DynamicDeckPage />} />
           <Route path="reading" element={<ReadingPage />} />

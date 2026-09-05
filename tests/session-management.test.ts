@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEnvelope, createModeState, presentCard, recordReview } from "../src/features/study/engine";
-import { automaticManagedSessionName, collectManagedSessions, deleteSessionFromEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
+import { automaticManagedSessionName, collectManagedSessions, deleteSessionFromEnvelope, displayManagedSessionName, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
 import type { StudyCard } from "../src/features/study/types";
 
 const cards: StudyCard[] = [
@@ -39,6 +39,12 @@ describe("session management", () => {
   it("formats two-source automatic names consistently with Stats", () => {
     const name = automaticManagedSessionName({ id: "s", language: "Latin", sources: ["Dickinson Vocabulary", "Henle Grammar Forms"], startedAt: 1, lastReviewedAt: 2, reviews: 2 }, { format: () => "DATE" } as Intl.DateTimeFormat);
     expect(name).toBe("Latin · Dickinson Vocabulary + Henle Grammar Forms · DATE");
+  });
+
+  it("shows only the custom name after a session is renamed", () => {
+    const session = { id: "s", language: "Latin" as const, sources: ["Dickinson Vocabulary"], startedAt: 1, lastReviewedAt: 2, reviews: 2, name: "Friday quiz" };
+    expect(displayManagedSessionName(session)).toBe("Friday quiz");
+    expect(displayManagedSessionName(session)).not.toContain("Dickinson");
   });
 
   it("persists a custom name on every review in the session", () => {

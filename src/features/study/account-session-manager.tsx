@@ -1,5 +1,5 @@
 import type { User } from "@supabase/supabase-js";
-import { Trash2 } from "lucide-react";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { deleteReviewEvents, loadProgressEnvelope, saveProgressEnvelope } from "./progress-repository";
@@ -22,11 +22,12 @@ function continueHref(session: ManagedSession) {
   return `${base}?${query.toString()}`;
 }
 
-export function AccountSessionManager({ user }: { user: User }) {
+export function SessionManager({ user, onChanged }: { user: User | null; onChanged?: () => void }) {
   const [envelopes, setEnvelopes] = useState<Record<string, DeckProgressEnvelope | null>>({});
-  const [draftNames, setDraftNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,10 +37,7 @@ export function AccountSessionManager({ user }: { user: User }) {
     setError(null);
     void Promise.all(managedDeckIds.map(async (deckId) => [deckId, await loadProgressEnvelope(deckId, user)] as const)).then((loaded) => {
       if (!active) return;
-      const next = Object.fromEntries(loaded.map(([deckId, result]) => [deckId, result.envelope])) as Record<string, DeckProgressEnvelope | null>;
-      setEnvelopes(next);
-      const sessions = collectManagedSessions(next);
-      setDraftNames(Object.fromEntries(sessions.map((session) => [session.id, session.name ?? ""])));
+      setEnvelopes(Object.fromEntries(loaded.map(([deckId, result]) => [deckId, result.envelope])) as Record<string, DeckProgressEnvelope | null>);
       setLoading(false);
     }).catch((reason) => {
       if (!active) return;
@@ -47,13 +45,26 @@ export function AccountSessionManager({ user }: { user: User }) {
       setLoading(false);
     });
     return () => { active = false; };
-  }, [user]);
+  }, [user?.id]);
 
   const sessions = useMemo(() => collectManagedSessions(envelopes), [envelopes]);
 
+  function beginRename(session: ManagedSession) {
+    setEditingSessionId(session.id);
+    setDraftName(displayManagedSessionName(session));
+    setError(null);
+    setMessage(null);
+  }
+
+  function cancelRename() {
+    setEditingSessionId(null);
+    setDraftName("");
+  }
+
   async function saveName(session: ManagedSession) {
-    const name = (draftNames[session.id] ?? "").trim();
+    const name = draftName.trim();
     if (!name) { setError("Session names cannot be blank."); return; }
+    if (name === displayManagedSessionName(session)) { cancelRename(); return; }
     setBusySessionId(session.id); setError(null); setMessage(null);
     try {
       const nextEnvelopes = { ...envelopes };
@@ -67,15 +78,17 @@ export function AccountSessionManager({ user }: { user: User }) {
       }
       await Promise.all(saves);
       setEnvelopes(nextEnvelopes);
-      setDraftNames((current) => ({ ...current, [session.id]: name }));
+      setEditingSessionId(null);
+      setDraftName("");
       setMessage(`Renamed session to “${name}”.`);
+      onChanged?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusySessionId(null); }
   }
 
   async function deleteSession(session: ManagedSession) {
     const name = displayManagedSessionName(session);
-    const confirmed = window.confirm(`Delete “${name}” permanently?\n\nThis removes ${session.reviews} review${session.reviews === 1 ? "" : "s"} from your history. Your proficiency and session statistics may decrease, and affected cards will be recalculated from the reviews that remain. Already-unlocked Dickinson vocabulary will stay unlocked.`);
+    const confirmed = window.confirm(`Delete “${name}” permanently?\n\nThis removes ${session.reviews} review${session.reviews === 1 ? "" : "s"} from your history. Your proficiency and session statistics may decrease. Already-unlocked Dickinson vocabulary will stay unlocked.`);
     if (!confirmed) return;
     setBusySessionId(session.id); setError(null); setMessage(null);
     try {
@@ -93,36 +106,37 @@ export function AccountSessionManager({ user }: { user: User }) {
       await Promise.all(saves);
       await deleteReviewEvents(user, reviewIds);
       setEnvelopes(nextEnvelopes);
-      setDraftNames((current) => { const next = { ...current }; delete next[session.id]; return next; });
-      setMessage(`Deleted “${name}” and ${reviewIds.length} saved review${reviewIds.length === 1 ? "" : "s"}.`);
+      setMessage(`Deleted “${name}”.`);
+      onChanged?.();
     } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setBusySessionId(null); }
   }
 
-  return <section className="account-activity panel-surface account-session-manager">
-    <p className="eyebrow">Session management</p>
-    <h2>Rename, continue, or delete study sessions</h2>
-    <p className="form-help">Account is the single place to manage session names. Custom names automatically appear in Greek, Latin, and Stats and replace the automatic session name everywhere.</p>
-    <p className="form-help">Deleting a session permanently removes those reviews from your history and can lower your proficiency score. It does not re-lock Dickinson vocabulary you already reached.</p>
+  return <section className="panel-surface stats-session-filter" aria-labelledby="session-management-title">
+    <div className="stats-section-heading"><div><p className="eyebrow">Session management</p><h2 id="session-management-title">Your sessions</h2><p>Double-click a session name to rename it. A custom name replaces the automatic name everywhere.</p></div></div>
     {message && <div className="success-alert">{message}</div>}
     {error && <div className="inline-alert">{error}</div>}
-    {loading ? <p className="form-help">Loading sessions…</p> : sessions.length ? <div className="account-session-list">
+    {loading ? <p className="form-help">Loading sessions…</p> : sessions.length ? <div className="stats-session-picker">
       {sessions.map((session) => {
-        const currentName = displayManagedSessionName(session);
-        const draftName = draftNames[session.id] ?? session.name ?? "";
         const busy = busySessionId === session.id;
-        const hasCustomName = Boolean(session.name?.trim());
-        return <article className="account-session-row" key={session.id}>
-          <div className="account-session-copy">
+        const editing = editingSessionId === session.id;
+        const custom = Boolean(session.name?.trim());
+        return <article className="stats-session-choice" key={session.id}>
+          <div style={{ minWidth: 0, display: "grid", gap: ".14rem" }}>
             <span className="eyebrow">{session.language}</span>
-            <strong>{currentName}</strong>
-            <small>{hasCustomName ? `${session.reviews} review${session.reviews === 1 ? "" : "s"}` : `${session.sources.join(" + ")} · ${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`}</small>
+            {editing ? <div className="stats-session-actions">
+              <input autoFocus value={draftName} maxLength={80} aria-label="Session name" onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDraftName(event.target.value)} onKeyDown={(event) => {
+                if (event.key === "Enter") { event.preventDefault(); void saveName(session); }
+                if (event.key === "Escape") { event.preventDefault(); cancelRename(); }
+              }} />
+              <button className="icon-button" type="button" title="Save name" aria-label="Save name" disabled={busy || !draftName.trim()} onClick={() => void saveName(session)}><Check /></button>
+              <button className="icon-button" type="button" title="Cancel rename" aria-label="Cancel rename" onClick={cancelRename}><X /></button>
+            </div> : <button type="button" title="Double-click to rename" onDoubleClick={() => beginRename(session)} style={{ display: "flex", alignItems: "center", gap: ".35rem", padding: 0, border: 0, background: "none", color: "inherit", font: "inherit", textAlign: "left" }}><strong>{displayManagedSessionName(session)}</strong><Pencil aria-hidden="true" width={14} /></button>}
+            <small className="stats-session-date">{session.language} · {sessionDateFormatter.format(session.startedAt)} · {session.reviews} review{session.reviews === 1 ? "" : "s"}{custom ? "" : ` · ${session.sources.join(" + ")}`}</small>
           </div>
-          <div className="auth-form account-session-name-field"><label><span>Custom session name</span><input value={draftName} maxLength={80} placeholder="Optional custom name" onChange={(event) => setDraftNames((current) => ({ ...current, [session.id]: event.target.value }))} /></label></div>
-          <div className="account-session-actions">
-            <button className="secondary-button" type="button" disabled={busy || !draftName.trim() || draftName.trim() === (session.name?.trim() ?? "")} onClick={() => void saveName(session)}>{busy ? "Saving…" : "Save name"}</button>
-            <Link className="secondary-button" to={continueHref(session)}>Continue</Link>
-            <button className="secondary-button account-delete-session" type="button" disabled={busy} onClick={() => void deleteSession(session)}><Trash2 aria-hidden="true" /> Delete</button>
+          <div className="stats-session-actions">
+            <Link className="small-outline-button" to={continueHref(session)}>Continue</Link>
+            <button className="small-outline-button" type="button" disabled={busy} onClick={() => void deleteSession(session)}><Trash2 aria-hidden="true" /> Delete</button>
           </div>
         </article>;
       })}
