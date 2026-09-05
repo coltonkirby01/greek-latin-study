@@ -56,6 +56,12 @@ export function retainSelectedCandidate(current: Candidate | null, sources: Stud
 
 function sessionLabel(session: ManagedSession) { return displayManagedSessionName(session); }
 
+export function mostRecentResumableSession(sessions: readonly ManagedSession[]) {
+  return [...sessions]
+    .filter((session) => !session.inferred)
+    .sort((a, b) => b.lastReviewedAt - a.lastReviewedAt || b.startedAt - a.startedAt)[0] ?? null;
+}
+
 export function currentSessionDisplayName(language: "Greek" | "Latin", sources: readonly string[], customName?: string) {
   const custom = customName?.trim();
   if (custom) return custom;
@@ -119,6 +125,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const [backtracking, setBacktracking] = useState(false), [startGateOpen, setStartGateOpen] = useState(true);
   const [session, setSession] = useState<SessionMeta>(() => resumeSession ?? makeSession());
   const [warmup, setWarmup] = useState<WarmupMeta | null>(null);
+  const sessionChoiceInitialized = useRef(Boolean(resumeSession));
 
   const sessionLanguage: "Greek" | "Latin" = deck.language === "greek" ? "Greek" : "Latin";
   const sessionDeckIds = useMemo(() => sessionDeckIdsForLanguage(sessionLanguage), [sessionLanguage]);
@@ -131,6 +138,15 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     currentManagedSession?.sources ?? sources.map((source) => source.label),
     currentManagedSession?.name ?? session.name,
   ), [currentManagedSession, session.name, sessionLanguage, sources]);
+
+  useEffect(() => {
+    if (!ready || sessionChoiceInitialized.current) return;
+    sessionChoiceInitialized.current = true;
+    const latest = mostRecentResumableSession(sessionCatalog);
+    if (!latest) return;
+    setSession({ id: latest.id, startedAt: latest.startedAt, name: latest.name });
+    setNotice(`Continuing ${sessionLabel(latest)}. Adaptive review still uses your full long-term history.`);
+  }, [ready, sessionCatalog]);
 
   const modeFor = useCallback((source: StudySourceDefinition) => {
     const envelope = envelopesRef.current[source.deck.id];
@@ -294,11 +310,13 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   function continueSession(id: string) {
     const previous = sessionCatalog.find((item) => item.id === id && !item.inferred);
     if (!previous) return;
+    sessionChoiceInitialized.current = true;
     clearResumeUrl();
     setWarmup(null); setSession({ id: previous.id, startedAt: previous.startedAt, name: previous.name }); setLastTransaction(null); resetUi(); setStartGateOpen(true);
     setNotice(`Continuing ${sessionLabel(previous)}. Adaptive review still uses your full long-term history.`);
   }
   function startNewSession() {
+    sessionChoiceInitialized.current = true;
     clearResumeUrl();
     setWarmup(null); setSession(makeSession()); setLastTransaction(null); resetUi(); setStartGateOpen(true);
     const selected = chooseNext(current);
