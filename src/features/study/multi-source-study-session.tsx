@@ -23,6 +23,8 @@ export type StudySourceDefinition = {
 type Candidate = { source: StudySourceDefinition; card: StudyCard };
 type MixedReviewTransaction = ReviewTransaction & { sourceId: string; deckId: string; studyKey: string };
 type SyncStatus = "loading" | "local" | "syncing" | "cloud" | "error";
+type SessionMeta = { id: string; startedAt: number };
+const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
 
 type Props = {
   deck: DeckDefinition;
@@ -76,6 +78,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const [capturedTimeMs, setCapturedTimeMs] = useState<number | null>(null), [lastTransaction, setLastTransaction] = useState<MixedReviewTransaction | null>(null), [editingTransaction, setEditingTransaction] = useState<MixedReviewTransaction | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(null);
   const [backtracking, setBacktracking] = useState(false), [startGateOpen, setStartGateOpen] = useState(true);
+  const [session, setSession] = useState<SessionMeta>(makeSession);
 
   const deckIdsKey = useMemo(() => [...new Set(sources.map((source) => source.deck.id))].sort().join("|"), [sources]);
   const selectionSignature = useMemo(() => `${resetKey}::${sources.map((source) => `${source.id}:${source.studyKey}:${source.cards.map((card) => card.id).join(",")}`).join("||")}`, [resetKey, sources]);
@@ -197,6 +200,12 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
   function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!current) return; resetUi(); setStartGateOpen(true); const selected = chooseNext(current); if (selected) present(selected); }
   function skip() { if (!current || editingTransaction) return; const previous = current; resetUi(); const selected = chooseNext(previous); if (selected) present(selected); }
+  function startNewSession() {
+    setSession(makeSession()); setLastTransaction(null); resetUi(); setStartGateOpen(true);
+    const selected = chooseNext(current);
+    if (selected) present(selected);
+    setNotice("New session started. Card priorities still use your full long-term history.");
+  }
   function back() {
     if (!lastTransaction) return;
     const source = sources.find((item) => item.id === lastTransaction.sourceId);
@@ -213,9 +222,10 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     if (!current || !result || !difficulty) return;
     const source = current.source, state = modeFor(source), reviewedAt = Date.now(), reviewId = editingTransaction?.reviewId ?? crypto.randomUUID(), responseTimeMs = capturedTimeMs ?? timer.capture();
     const beforeState = editingTransaction?.beforeState ?? structuredClone(state);
-    let next = recordReview(state, current.card, { id: reviewId, result, difficulty, responseTimeMs, reviewedAt });
+    const sessionId = editingTransaction?.sessionId ?? session.id, sessionStartedAt = editingTransaction?.sessionStartedAt ?? session.startedAt;
+    let next = recordReview(state, current.card, { id: reviewId, result, difficulty, responseTimeMs, reviewedAt, sessionId, sessionStartedAt });
     next = maybeUnlockNextBatch(next, source.deck.cards, source.deck.staged, reviewedAt);
-    const transaction: MixedReviewTransaction = { reviewId, cardId: current.card.id, result, difficulty, responseTimeMs, beforeState, sourceId: source.id, deckId: source.deck.id, studyKey: source.studyKey };
+    const transaction: MixedReviewTransaction = { reviewId, cardId: current.card.id, result, difficulty, responseTimeMs, beforeState, sourceId: source.id, deckId: source.deck.id, studyKey: source.studyKey, sessionId, sessionStartedAt };
     const corrected = Boolean(editingTransaction), unlocked = next.lastUnlock?.at === reviewedAt ? next.lastUnlock : null;
     saveMode(source, next, { review: transaction }); setLastTransaction(transaction); resetUi();
     const selected = chooseNext(current); if (selected) present(selected);
@@ -256,6 +266,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
         <div className="toolbar-control-group">
           {onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
+          <button type="button" className="small-outline-button" onClick={startNewSession} disabled={Boolean(editingTransaction)}>New session</button>
           <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || editingTransaction || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
         </div>
