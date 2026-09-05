@@ -2,7 +2,6 @@ import { Cloud, Download, FileUp, KeyRound, LogOut, ShieldCheck } from "lucide-r
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../features/auth/auth-context";
 import { exportProgress, importProgressFile } from "../features/study/legacy-import";
-import { AccountSessionManager } from "../features/study/account-session-manager";
 import { loadLocalEnvelope, loadProgressEnvelope, replaceLocalEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";
 import "./account-page.css";
 
@@ -93,8 +92,6 @@ export function AccountPage() {
           <button className="primary-button form-submit" disabled={working}>{working ? "Saving…" : providers.has("email") ? "Change password" : "Enable email + password sign-in"}</button>
         </form>
       </section>
-
-      <AccountSessionManager user={auth.user} />
 
       <section className="account-activity panel-surface">
         <p className="eyebrow">Portable by design</p><h2>Progress backup &amp; migration</h2><p className="form-help">Import this app's backup or a Henle v4 backup. Directional histories remain independent.</p>
