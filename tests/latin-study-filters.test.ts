@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { grammarFormGroups, matchesGrammarCard, matchesVocabularyCard, vocabularyFamily } from "../src/features/study/latin-study-filters";
+import { grammarFormGroups, HENLE_PART1_SECTIONS, matchesGrammarCard, matchesVocabularyCard, vocabularyFamily } from "../src/features/study/latin-study-filters";
 import type { StudyCard } from "../src/features/study/types";
 
 const grammarCard = (overrides: Partial<StudyCard> = {}): StudyCard => ({
@@ -13,6 +13,10 @@ const grammarCard = (overrides: Partial<StudyCard> = {}): StudyCard => ({
 });
 
 describe("Latin hierarchical filters", () => {
+  it("keeps every Henle Part I grammatical section available", () => {
+    expect(HENLE_PART1_SECTIONS).toEqual(["Nouns", "Adjectives", "Adverbs", "Numerals", "Pronouns", "Verbs"]);
+  });
+
   it("intersects verb section, voice, mood/form, and family", () => {
     const card = grammarCard();
     expect(matchesGrammarCard(card, {

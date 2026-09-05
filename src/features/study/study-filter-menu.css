@@ -15,12 +15,15 @@
   list-style: none;
 }
 
-.study-filter-menu > summary::-webkit-details-marker { display: none; }
+.study-filter-menu > summary::-webkit-details-marker,
+.filter-disclosure > summary::-webkit-details-marker { display: none; }
 .filter-summary-label { display: inline-flex; gap: 0.5rem; align-items: center; color: var(--foreground); font-weight: 800; }
 .filter-summary-label svg { width: 1rem; }
 .study-filter-menu > summary > strong { color: var(--burgundy); font-size: 0.82rem; text-align: right; }
-.filter-chevron { width: 1rem; transition: transform 160ms ease; }
-.study-filter-menu[open] .filter-chevron { transform: rotate(180deg); }
+.filter-chevron,
+.filter-disclosure-chevron { width: 1rem; transition: transform 160ms ease; }
+.study-filter-menu[open] > summary .filter-chevron,
+.filter-disclosure[open] > summary .filter-disclosure-chevron { transform: rotate(180deg); }
 
 .study-filter-menu-body {
   padding: 0 1rem 1rem;
@@ -83,6 +86,37 @@
 .filter-checkbox-copy small { color: var(--ink-soft); font-size: 0.68rem; }
 .filter-count { color: var(--ink-soft); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 
+.filter-disclosure {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: 0.65rem;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.filter-disclosure.is-nested { margin-top: 0.65rem; background: var(--panel-2); }
+.filter-disclosure > summary {
+  min-height: 44px;
+  padding: 0.58rem 0.7rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  list-style: none;
+}
+.filter-disclosure-copy { min-width: 0; display: grid; gap: 0.1rem; }
+.filter-disclosure-copy strong { font-size: 0.8rem; }
+.filter-disclosure-copy small { color: var(--ink-soft); font-size: 0.69rem; }
+.filter-disclosure-body {
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+.filter-disclosure-body > .filter-section { padding: 0.7rem; background: var(--panel); }
+.filter-disclosure.is-nested .filter-disclosure-body > .filter-section { background: var(--panel-2); }
+
 .filter-subsection-stack { display: grid; gap: 0.65rem; }
 .filter-subsection-heading { margin-bottom: 0.35rem; align-items: center; }
 .filter-subsection-label { margin: 0.15rem 0 0; color: var(--ink-soft); font-size: 0.7rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -94,4 +128,5 @@
   .filter-chevron { grid-column: 2; grid-row: 1 / span 2; }
   .filter-section-heading { flex-direction: column; }
   .filter-option-grid { grid-template-columns: 1fr; }
+  .filter-checkbox.is-nested { margin-left: 0; }
 }

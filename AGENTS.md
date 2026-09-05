@@ -12,8 +12,11 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - `/henle` is a compatibility redirect into `/latin`; Henle grammar is studied inside the Latin app.
 - Individual imported/custom deck routes under `/decks/:slug` may remain addressable, but there is no standalone `/decks` library page or Decks navigation item.
 - Greek card-type filtering is multi-select: uppercase, lowercase, punctuation, and accent marks can be studied singly or in any combination.
+- Greek filtering is organized by lesson: Lesson 1 contains Alphabet and Punctuation; Alphabet expands to independent Uppercase and Lowercase choices. Lesson 2 contains Accent Marks. Keep this hierarchy compact with nested disclosures rather than reverting to a flat category list.
 - Latin is a unified study surface. Dickinson vocabulary, Henle individual forms, and Henle whole charts can be selected singly or combined in one study pool.
 - Latin grammar filters are hierarchical and composable. Broad sections can be narrowed by verb family, voice, and form/mood (for example Verbs + Active Voice + Indicative).
+- Henle Part I grammatical sections are Nouns, Adjectives, Adverbs, Numerals, Pronouns, and Verbs. Do not reduce the Henle selector to verbs only.
+- Henle Grammar Forms and Henle Whole Charts each have their own compact nested selection controls and independent filter state, so a user may choose different Part I sections for forms and charts in the same mixed session.
 - Filters should narrow the cards presented without erasing or replacing stored study history.
 - Changing a study filter or direction must return the session to the Start gate before timing resumes.
 
