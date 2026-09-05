@@ -65,8 +65,12 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 - A new study session is a performance window layered on top of continuous long-term mastery. Starting a new session must never reset mastery, due dates, intervals, response-time history, or adaptive priorities.
 - Reviews belonging to a normal session carry a stable session ID/start time so sessions can be compared in Stats.
-- Users can deliberately continue a past ranked session. Continuing reuses that session's original ID and start time, while card selection still uses the user's current long-term mastery, due state, speed, accuracy, and adaptive priorities.
-- The study toolbar exposes recent resumable sessions and a distinct New session action. Resuming a session and starting a new one must remain separate operations.
+- Normal sessions may also carry a persistent custom session name. Renaming a session changes only its display identity; it must not change its session ID, review membership, mastery, scheduling, ranking data, or long-term memory.
+- Sessions without custom names receive useful automatic names based on language, source/focus, and date/time rather than opaque IDs or purely generic labels.
+- Users can deliberately continue a past ranked session. Continuing reuses that session's original ID, start time, and custom name when present, while card selection still uses the user's current long-term mastery, due state, speed, accuracy, and adaptive priorities.
+- Both Greek and Latin study toolbars expose one compact Session dropdown in the control position previously used by the standalone New session button. That menu lets the user keep the current session, start a new session, or select a resumable past session.
+- Do not reintroduce a separate New session button beside the Session dropdown unless explicitly requested; starting a new session belongs in that menu.
+- The Stats session table also provides an explicit Continue action for resumable non-legacy sessions, so users can resume either from Stats or directly inside Greek/Latin.
 - A resumed session can use the user's current filter selection; resuming must not restore or overwrite old filter state unless explicitly requested.
 - The Start gate offers a Personalized Warm-up. The default warm-up contains 5 reviewed cards.
 - Warm-up selection is adaptive/personalized and should favor due, slow, difficult, recently missed, or otherwise high-priority cards from the currently selected material.
@@ -124,8 +128,12 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - `/stats` is one unified Stats page covering both Greek and Latin and appears in the primary navigation. Greek and Latin study pages may also link to it.
 - Stats text must remain legible in both light and dark themes. Use foreground/muted-foreground text variables for text; do not use a background fill token such as `--muted` as a text color.
 - Stats include per-card total recall time, average/last recall time, accuracy, reviews, mistakes, difficulty ratings, best streak, last review, hardest cards, slowest cards, most reviewed cards, and most improved cards.
+- The card-by-card Stats table is a compact preview by default rather than rendering every reviewed card at once. Keep Show more, Show all, and Collapse-to-preview controls so deep inspection is available without overwhelming the page.
 - Stats retain Forward/Reverse separation and include Henle Whole Charts as their own study mode.
 - Stats rank explicit study sessions. Legacy history without explicit session IDs may be grouped into inferred sessions without altering stored data.
+- The Stats page provides a multi-select session scope. Users can view all sessions, one session, or any selected combination; the proficiency summaries, card analysis, recent reviews, and trend views must follow the selected scope.
+- Session rows expose clear names, Rename actions, and Continue actions for explicit resumable sessions. Custom session names persist with review history and survive reload/login synchronization.
+- Stats include lightweight trend graphs for session score and active recall time over time. Avoid large charting dependencies when simple native/SVG rendering is sufficient.
 - Intrinsic card difficulty is separate from the user's Easy/Medium/Hard rating.
 - Greek intrinsic difficulty rises with lesson progression; grammar may add complexity. Later lessons should generally be worth more than earlier lessons.
 - Dickinson vocabulary intrinsic difficulty rises with frequency rank/rarity. Rarer words should generally be worth more than very common words.
@@ -154,6 +162,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Make the flexibility of Greek and Latin study filters obvious in page/home descriptions; users should not have to discover by accident that categories can be combined.
 - On the home page, Greek and Latin use written display titles rather than generic A/Α glyphs. Keep the Greek and Latin count/status badge area blank unless explicitly requested otherwise.
 - Home descriptions credit the actual flashcard sources and retain source/purchase links. Greek purchase references must point to the fifth edition of Anne H. Groton's *From Alpha to Omega*, not the fourth edition used by the supplied online source.
+- When signed in, the header Account control is a compact initials avatar rather than the user's full email address. Preserve an accessible Account label/title without displaying the email as the main navigation text.
 
 ## Performance and maintainability
 
