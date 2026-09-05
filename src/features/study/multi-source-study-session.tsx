@@ -48,6 +48,12 @@ type Props = {
 };
 
 function candidateKey(candidate: Candidate) { return `${candidate.source.id}:${candidate.card.id}`; }
+export function retainSelectedCandidate(current: Candidate | null, sources: StudySourceDefinition[]) {
+  if (!current) return null;
+  const source = sources.find((item) => item.id === current.source.id);
+  const card = source?.cards.find((item) => item.id === current.card.id);
+  return source && card ? { source, card } : null;
+}
 function sessionLabel(session: ResumableSession, language: string) {
   const customName = session.name?.trim();
   if (customName) return customName;
@@ -244,10 +250,13 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
 
   useEffect(() => {
     if (!ready) return;
-    resetUi(); setLastTransaction(null); setWarmup(null); setStartGateOpen(true); setCurrent(null);
+    resetUi(); setLastTransaction(null); setWarmup(null); setStartGateOpen(true);
+    const retained = retainSelectedCandidate(current, sources);
+    if (retained) { setCurrent(retained); return; }
+    setCurrent(null);
     const selected = chooseNext();
     if (selected) present(selected);
-    // The selection signature changes only when the selected study pool/direction changes.
+    // Filter changes keep the current card whenever it remains in the new pool.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, selectionSignature]);
 

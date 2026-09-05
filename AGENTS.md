@@ -19,6 +19,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Expanding/opening a dropdown is independent from selecting its parent. Users must be able to open an unchecked parent and select one or several child boxes without first selecting the entire parent.
 - Selecting a child beneath an unchecked parent activates only the necessary child path, not every sibling in that parent.
 - Filters narrow the current study pool only. Deselecting a source or child must never erase or reset stored mastery, history, scheduling, timing, or statistics for those cards.
+- When filters change, keep the user on the same current card whenever that card still belongs to the newly selected pool. Choose a replacement card only if the current card was actually excluded by the new filter selection.
 - Changing a study filter or direction returns the active study surface to the Start gate before timing resumes.
 
 ### Greek selector
@@ -31,6 +32,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - The only current Greek vocabulary source is Lesson 3 Vocabulary.
 - Greek Lesson 3 contains separate Vocabulary and Grammar headings. Lesson 3 Grammar currently contains Present Active Indicative, Present Active Infinitive, and Present Active Imperative from the παιδεύω paradigm.
 - Keep Lesson 3 vocabulary progress separate from paradigm/form progress even when both are mixed in one session.
+- Every Greek vocabulary card must show a Classical-Greek pronunciation guide on the answer side in both Forward and Reverse study. Future Greek vocabulary imports must use the shared pronunciation helper rather than requiring a hand-maintained pronunciation list.
 - Greek card types remain multi-select. Lesson material, vocabulary, grammar, punctuation, accents, and future lesson categories may be combined in one adaptive session without merging their stored histories.
 
 ### Latin selector
@@ -42,6 +44,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Opening a Henle dropdown may load Henle source data, but opening alone must not select the source.
 - Latin grammar filters are hierarchical and composable. Broad sections can be narrowed by verb family, voice, and form/mood (for example Verbs + Active Voice + Indicative).
 - Henle Part I grammatical sections are Nouns, Adjectives, Adverbs, Numerals, Pronouns, and Verbs. Do not reduce the Henle selector to verbs only.
+- Henle Whole Chart answers must explicitly identify stems as `Stem:` and endings/personal signs as `Ending:` whenever the source metadata identifies them as such. Do not present a bare stem or ending as though it were an unlabeled full form.
 
 ## Built-in deck invariants
 
@@ -135,7 +138,8 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - The Stats page provides a multi-select session scope. Users can view all sessions, one session, or any selected combination; the proficiency summaries, card analysis, recent reviews, and trend views must follow the selected scope.
 - Session management belongs directly inside Stats > Choose sessions; do not add a separate session-management card/panel. Double-click an explicit session name there for Finder/Explorer-style inline renaming, and keep Delete in the same row.
 - Legacy/inferred session buckets created from pre-session-ID review history must also be renameable and deletable from Stats > Choose sessions. Their storage origin (local or cloud) must not make them unmanageable.
-- Deleting a session removes it from Stats/session history only. Its reviews remain part of continuous study memory and MUST NOT change card mastery, strength, intervals, due dates, adaptive priority inputs, response-time memory, review sequence, or Dickinson unlock progress. The visible Stats/proficiency calculations should be recomputed from the sessions that remain.
+- Deleting a session is permanent for session/history data: remove its stored review-history records, remove its cloud `review_events` rows when signed in, and remove it from Stats and all resumable Session menus. Deletion must still preserve the already-accumulated card-learning state used by the study engine: mastery, correctness/difficulty aggregates, strength, intervals, due dates, adaptive-priority inputs, response-time aggregates, review sequence, and Dickinson unlock progress must not be recalculated or rolled back. Stats/proficiency are recomputed only from the sessions that remain.
+- Session deletion must require a final confirmation explaining both sides of that behavior: what historical/session data will be permanently removed and what long-term adaptive learning state will remain unchanged.
 - Explicit resumable sessions retain Continue actions in the session rankings. Custom session names persist with review history and survive reload/login synchronization.
 - Stats include lightweight trend graphs for session score and active recall time over time. Avoid large charting dependencies when simple native/SVG rendering is sufficient.
 - Recent Reviews is a combined Greek + Latin activity feed, visually separated from both language-specific Stats sections.
@@ -147,43 +151,3 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - A high score must require demonstrated performance, not merely attempting hard material. Difficulty raises potential reward, while accuracy, active recall speed, retention/mastery breadth, and streaks determine whether that reward is earned.
 - Stats show overall, Greek, and Latin proficiency plus reviewed difficulty and hardest mastered material.
 - Ranked session scores account for intrinsic difficulty, accuracy, speed, and streaks. Warm-up activity is excluded from ranked session scoring.
-
-## Security, authentication, and Supabase coordination
-
-- Secrets belong in GitHub/Supabase environment settings, never source or browser code.
-- The committed `.env.production` may contain only the Supabase project URL and modern browser-safe publishable key; never add a secret or service-role key.
-- Database authorization remains enforced by Supabase RLS, even when the UI hides an action.
-- A Google-authenticated user may add email/password sign-in from the Account page by setting a password on the already authenticated Supabase user. This must preserve the same Supabase user ID, progress, sessions, and stats; do not create a second account simply because the user wants another sign-in method.
-- Supabase's same-verified-email identity behavior should be preserved. Never implement custom account merging by moving progress between unrelated user IDs unless explicitly designed and reviewed as a migration.
-- Password-setting UI must require an authenticated user, use Supabase Auth's user update flow, and never expose or persist the password in application storage.
-- After changing the Supabase schema, apply a new numbered migration and regenerate `src/lib/database.types.ts` from the deployed project.
-- Frontend maintainability/performance work should avoid changing `supabase/**`, auth/database types, environment files, migrations, or cloud-data services unless the task explicitly requires it.
-
-## UI preservation
-
-- Preserve the existing visual language and responsive layout unless redesign is explicitly requested.
-- New controls work in both light and dark themes through existing CSS variables.
-- Do not expose answers in previews, priority lists, metadata, aria-labels, or other hidden/accessibility text where the answer is meant to remain concealed.
-- Make the flexibility of Greek and Latin study filters obvious in page/home descriptions; users should not have to discover by accident that categories can be combined.
-- On the home page, Greek and Latin use written display titles rather than generic A/Α glyphs. Keep the Greek and Latin count/status badge area blank unless explicitly requested otherwise.
-- Home descriptions credit the actual flashcard sources and retain source/purchase links. Greek purchase references must point to the fifth edition of Anne H. Groton's *From Alpha to Omega*, not the fourth edition used by the supplied online source.
-- When signed in, the header Account control is a compact initials avatar rather than the user's full email address. Preserve an accessible Account label/title without displaying the email as the main navigation text.
-
-## Performance and maintainability
-
-- Keep the initial route lightweight. Prefer route-level lazy loading and feature-scoped CSS over loading all feature code/styles on the homepage.
-- Do not eagerly load the ~1.18 MB Henle source data when a user opens Latin for vocabulary only. Opening a Henle disclosure may trigger the load because its child choices require the data; selecting vocabulary alone must not.
-- Avoid repeated whole-deck scans in render loops where a stable cache or memoized derived value can preserve behavior more cheaply.
-- Prefer small, stable shared components over duplicated markup, but avoid abstraction that adds runtime work without reducing maintenance risk.
-- Preserve source data as external/static data rather than embedding thousands of cards into page components.
-- Before adding a large dependency, verify that the capability cannot be implemented with existing dependencies or platform APIs.
-- The production build enforces the bundle budget in `scripts/check-bundle-size.mjs`: main JavaScript must remain at or below 160 KB gzip and total CSS at or below 12 KB gzip. Do not raise these limits merely to make a change pass; first reduce the added payload or document why a deliberate budget increase is warranted.
-- Refactors whose purpose is maintainability/performance must not change user-visible study behavior unless explicitly requested.
-
-## Validation before completion
-
-- Run `npm run check` before proposing or merging code changes.
-- Fix TypeScript, test, and production-build failures caused by the change before completion.
-- For changes affecting timer, grading, Back, direction separation, staged unlocking, priority answers, filtering, mixed-source study, sessions, warm-ups, scoring, authentication, or source data, explicitly verify those invariants in addition to the general check.
-- Add or update focused regression tests for pure logic whenever practical.
-- Prefer focused changes over broad refactors unless a refactor is necessary for correctness, maintainability, or measured performance.

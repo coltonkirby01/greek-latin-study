@@ -1,4 +1,5 @@
 import type { DeckDefinition, StudyCard } from "../features/study/types";
+import { classicalGreekPronunciation } from "../features/greek/greek-pronunciation";
 
 type GreekSourceCard = { id: string; category: string; front: string; back_title: string; back: string };
 type GreekLesson3VocabularySourceCard = { id: string; greek: string; meaning: string; part_of_speech: string; lesson: number };
@@ -42,8 +43,8 @@ export function loadGreekLesson3VocabularyDeck() {
       category: "Lesson 3 Vocabulary",
       rank: index + 1,
       source: "From Alpha to Omega, Lesson 3",
-      notes: card.part_of_speech,
-      metadata: { lesson: card.lesson, studySource: "vocabulary", partOfSpeech: card.part_of_speech },
+      notes: `${card.part_of_speech} · Pronunciation: ${classicalGreekPronunciation(card.greek)}`,
+      metadata: { lesson: card.lesson, studySource: "vocabulary", partOfSpeech: card.part_of_speech, pronunciation: classicalGreekPronunciation(card.greek) },
     }));
     return { id: "alpha-omega-lesson3-vocab", slug: "greek", title: "Greek Lesson 3 Vocabulary", eyebrow: "Lesson 3 vocabulary", description: "Eleven vocabulary entries supplied for Lesson 3, tracked separately from grammar forms.", language: "greek", cards, supportsReverse: true, sourceNote: "From Alpha to Omega, Lesson 3 vocabulary." } satisfies DeckDefinition;
   });

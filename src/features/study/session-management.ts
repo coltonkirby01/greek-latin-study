@@ -118,6 +118,44 @@ function mutateReviewsInEnvelope(
   return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
 }
 
+function removeReviewsInEnvelope(
+  envelope: DeckProgressEnvelope,
+  matches: (review: ReviewRecord) => boolean,
+  now: number,
+): SessionMutation {
+  const next = structuredClone(envelope);
+  let changed = false;
+  const reviewIds: string[] = [];
+
+  for (const mode of Object.values(next.modes)) {
+    let modeChanged = false;
+    for (const progress of Object.values(mode.cards)) {
+      const kept: ReviewRecord[] = [];
+      for (const review of progress.history) {
+        if (matches(review)) {
+          changed = true;
+          modeChanged = true;
+          reviewIds.push(review.id);
+        } else {
+          kept.push(review);
+        }
+      }
+      if (modeChanged) progress.history = kept;
+    }
+    if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
+  }
+
+  // Session deletion removes the historical review records themselves, but leaves
+  // the card/mode aggregates that drive mastery, scheduling, adaptive priority,
+  // response-time memory, and staged unlocking untouched.
+  if (changed) {
+    const deletedIds = [...new Set(reviewIds)];
+    next.pendingDeletedReviewIds = [...new Set([...(next.pendingDeletedReviewIds ?? []), ...deletedIds])];
+    next.updatedAt = Math.max(next.updatedAt, now);
+  }
+  return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
+}
+
 export function renameSessionInEnvelope(envelope: DeckProgressEnvelope, sessionId: string, name: string, now = Date.now()): SessionMutation {
   return mutateReviewsInEnvelope(
     envelope,
@@ -138,20 +176,22 @@ export function renameReviewsInEnvelope(envelope: DeckProgressEnvelope, reviewId
 }
 
 export function deleteSessionFromEnvelope(envelope: DeckProgressEnvelope, sessionId: string, now = Date.now()): SessionMutation {
-  return mutateReviewsInEnvelope(
+  return removeReviewsInEnvelope(
     envelope,
-    (review) => review.sessionId === sessionId && review.activityKind !== "warmup" && !review.statsExcluded,
-    (review) => ({ ...review, statsExcluded: true }),
+    (review) => review.sessionId === sessionId && review.activityKind !== "warmup",
     now,
   );
 }
 
-export function deleteReviewsFromStatsInEnvelope(envelope: DeckProgressEnvelope, reviewIds: readonly string[], now = Date.now()): SessionMutation {
+export function deleteReviewsFromEnvelope(envelope: DeckProgressEnvelope, reviewIds: readonly string[], now = Date.now()): SessionMutation {
   const ids = new Set(reviewIds);
-  return mutateReviewsInEnvelope(
+  return removeReviewsInEnvelope(
     envelope,
-    (review) => ids.has(review.id) && review.activityKind !== "warmup" && !review.statsExcluded,
-    (review) => ({ ...review, statsExcluded: true }),
+    (review) => ids.has(review.id) && review.activityKind !== "warmup",
     now,
   );
 }
+
+// Backward-compatible export used by Stats. The behavior is now a true history
+// deletion rather than a hidden/excluded marker.
+export const deleteReviewsFromStatsInEnvelope = deleteReviewsFromEnvelope;

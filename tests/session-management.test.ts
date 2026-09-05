@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEnvelope, createModeState, presentCard, recordReview } from "../src/features/study/engine";
-import { automaticManagedSessionName, collectManagedSessions, deleteReviewsFromStatsInEnvelope, deleteSessionFromEnvelope, displayManagedSessionName, renameReviewsInEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
+import { automaticManagedSessionName, collectManagedSessions, deleteReviewsFromEnvelope, deleteSessionFromEnvelope, displayManagedSessionName, renameReviewsInEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
 import type { StudyCard } from "../src/features/study/types";
 
 const cards: StudyCard[] = [
@@ -72,7 +72,7 @@ describe("session management", () => {
     expect(review?.sessionName).toBe("Old Latin practice");
   });
 
-  it("hides a deleted session from Stats without changing adaptive memory", () => {
+  it("fully removes a deleted explicit session from stored history without changing adaptive memory", () => {
     const before = envelopeWithTwoSessions();
     const beforeMode = structuredClone(before.modes.forward);
     const beforeProgress = structuredClone(beforeMode.cards.one);
@@ -81,8 +81,7 @@ describe("session management", () => {
     const progress = mode.cards.one;
 
     expect(mutation.reviewIds).toEqual(["r2"]);
-    expect(progress.history).toHaveLength(2);
-    expect(progress.history.find((review) => review.id === "r2")?.statsExcluded).toBe(true);
+    expect(progress.history.map((review) => review.id)).toEqual(["r1"]);
     expect(progress.reviews).toBe(beforeProgress.reviews);
     expect(progress.right).toBe(beforeProgress.right);
     expect(progress.wrong).toBe(beforeProgress.wrong);
@@ -101,16 +100,16 @@ describe("session management", () => {
     expect(collectManagedSessions({ "dickinson-latin-core": mutation.envelope }).map((session) => session.id)).toEqual(["session-a"]);
   });
 
-  it("hides legacy reviews from Stats without changing adaptive memory", () => {
+  it("fully removes legacy session reviews without changing adaptive memory", () => {
     const before = envelopeWithLegacyReview();
     const beforeMode = structuredClone(before.modes.forward);
     const beforeProgress = structuredClone(beforeMode.cards.one);
-    const mutation = deleteReviewsFromStatsInEnvelope(before, ["legacy-r1"], 100);
+    const mutation = deleteReviewsFromEnvelope(before, ["legacy-r1"], 100);
     const mode = mutation.envelope.modes.forward;
     const progress = mode.cards.one;
 
     expect(mutation.changed).toBe(true);
-    expect(progress.history.find((review) => review.id === "legacy-r1")?.statsExcluded).toBe(true);
+    expect(progress.history).toEqual([]);
     expect(progress.reviews).toBe(beforeProgress.reviews);
     expect(progress.strength).toBe(beforeProgress.strength);
     expect(progress.intervalMs).toBe(beforeProgress.intervalMs);
