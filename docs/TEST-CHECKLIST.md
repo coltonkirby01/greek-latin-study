@@ -97,7 +97,7 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ Production frontend is connected with the project's modern browser-safe publishable key.
 - ✅ Production Supabase contains one confirmed email/password account with a recorded sign-in (verified without exposing its identity on 2026-09-05).
 - 🟡 Session persistence, cross-session/device sync, and password reset still require the owner's live browser verification.
-- 🔴 Google login is wired in the application but the Supabase Google provider remains disabled pending the owner-created Google OAuth Client ID and secret. Exact settings are in `docs/AUTH-SETUP.md`.
+- ✅ Google OAuth is enabled and a live Google sign-in created a confirmed Google identity linked to the existing account (verified without exposing its identity on 2026-09-05).
 
 ## Reading & Audio
 
