@@ -25,7 +25,7 @@ type Candidate = { source: StudySourceDefinition; card: StudyCard };
 type MixedReviewTransaction = ReviewTransaction & { sourceId: string; deckId: string; studyKey: string };
 type SyncStatus = "loading" | "local" | "syncing" | "cloud" | "error";
 type SessionMeta = { id: string; startedAt: number; name?: string };
-type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number; sourceLabels: string[] };
+type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number; sourceLabels: string[]; nameReviewedAt?: number };
 type WarmupMeta = SessionMeta & { remaining: number; total: number };
 const WARMUP_CARDS = 5;
 const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
@@ -49,9 +49,10 @@ type Props = {
 
 function candidateKey(candidate: Candidate) { return `${candidate.source.id}:${candidate.card.id}`; }
 function sessionLabel(session: ResumableSession, language: string) {
+  const customName = session.name?.trim();
+  if (customName) return customName;
   const focus = session.sourceLabels.length === 1 ? session.sourceLabels[0] : session.sourceLabels.length ? "Mixed study" : "Study";
-  const name = session.name?.trim() || `${language} · ${focus}`;
-  return `${name} · ${sessionDateFormatter.format(session.startedAt)} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`;
+  return `${language} · ${focus} · ${sessionDateFormatter.format(session.startedAt)}`;
 }
 
 function collectResumableSessions(sources: StudySourceDefinition[], envelopes: Record<string, DeckProgressEnvelope>) {
@@ -61,7 +62,7 @@ function collectResumableSessions(sources: StudySourceDefinition[], envelopes: R
     if (!state) continue;
     for (const progress of Object.values(state.cards)) {
       for (const review of progress.history) {
-        if (!review.sessionId || review.activityKind === "warmup") continue;
+        if (!review.sessionId || review.activityKind === "warmup" || review.statsExcluded) continue;
         const startedAt = review.sessionStartedAt ?? review.reviewedAt;
         const existing = sessions.get(review.sessionId);
         if (existing) {
@@ -69,8 +70,8 @@ function collectResumableSessions(sources: StudySourceDefinition[], envelopes: R
           existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
           existing.reviews += 1;
           if (!existing.sourceLabels.includes(source.label)) existing.sourceLabels.push(source.label);
-          if (review.sessionName?.trim()) existing.name = review.sessionName.trim();
-        } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, name: review.sessionName?.trim() || undefined, lastReviewedAt: review.reviewedAt, reviews: 1, sourceLabels: [source.label] });
+          if (review.sessionName?.trim() && review.reviewedAt >= (existing.nameReviewedAt ?? 0)) { existing.name = review.sessionName.trim(); existing.nameReviewedAt = review.reviewedAt; }
+        } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, name: review.sessionName?.trim() || undefined, nameReviewedAt: review.sessionName?.trim() ? review.reviewedAt : undefined, lastReviewedAt: review.reviewedAt, reviews: 1, sourceLabels: [source.label] });
       }
     }
   }
@@ -84,9 +85,9 @@ function appendResumableReview(sessions: ResumableSession[], meta: SessionMeta, 
     existing.startedAt = Math.min(existing.startedAt, meta.startedAt);
     existing.lastReviewedAt = Math.max(existing.lastReviewedAt, reviewedAt);
     existing.reviews += 1;
-    if (meta.name) existing.name = meta.name;
+    if (meta.name) { existing.name = meta.name; existing.nameReviewedAt = reviewedAt; }
     if (!existing.sourceLabels.includes(sourceLabel)) existing.sourceLabels.push(sourceLabel);
-  } else next.push({ ...meta, lastReviewedAt: reviewedAt, reviews: 1, sourceLabels: [sourceLabel] });
+  } else next.push({ ...meta, nameReviewedAt: meta.name ? reviewedAt : undefined, lastReviewedAt: reviewedAt, reviews: 1, sourceLabels: [sourceLabel] });
   return next.sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
 }
 

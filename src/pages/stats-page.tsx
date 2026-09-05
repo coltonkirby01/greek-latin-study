@@ -5,9 +5,9 @@ import { loadGreekDeck, loadGreekLesson3GrammarDeck, loadGreekLesson3VocabularyD
 import { useAuth } from "../features/auth/auth-context";
 import { blankCardProgress, createModeState, directionalCopy, formatResponseTime, studyStats } from "../features/study/engine";
 import { loadHenle } from "../features/henle/henle-data";
-import { loadProgressEnvelope } from "../features/study/progress-repository";
+import { loadProgressEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";
 import { intrinsicCardDifficulty, scoredSession, userProficiencyScore } from "../features/study/scoring";
-import { sessionCustomNameFromReviews } from "../features/study/session-management";
+import { deleteSessionFromEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../features/study/session-management";
 import type { CardProgress, DeckDefinition, DeckProgressEnvelope, ReviewRecord, StudyActivityKind, StudyCard, StudyDirection, StudyModeState } from "../features/study/types";
 import { useAsync } from "../hooks/use-async";
 import "./stats-page.css";
@@ -216,8 +216,7 @@ function scopedProgress(reviews: ReviewRecord[]) {
   return progress;
 }
 
-function cardsForScope(allCards: CardPerformance[], events: ReviewEvent[], allSessions: boolean) {
-  if (allSessions) return allCards;
+function cardsForScope(allCards: CardPerformance[], events: ReviewEvent[]) {
   const histories = new Map<string, ReviewRecord[]>();
   for (const event of events) histories.set(event.cardKey, [...(histories.get(event.cardKey) ?? []), event.review]);
   return allCards.flatMap((card) => {
@@ -226,8 +225,7 @@ function cardsForScope(allCards: CardPerformance[], events: ReviewEvent[], allSe
   });
 }
 
-function summariesForScope(allRows: SourceSummary[], cards: CardPerformance[], allSessions: boolean) {
-  if (allSessions) return allRows;
+function summariesForScope(allRows: SourceSummary[], cards: CardPerformance[]) {
   const bySource = new Map<string, CardPerformance[]>();
   for (const card of cards) bySource.set(sourceKey(card.source), [...(bySource.get(sourceKey(card.source)) ?? []), card]);
   return allRows.map((row) => {
@@ -266,6 +264,11 @@ function weeklyTrendData(sessions: SessionSummary[]) {
 export function StatsPage() {
   const { user } = useAuth();
   const [selectedSessions, setSelectedSessions] = useState<Set<string> | null>(null);
+  const [revision, setRevision] = useState(0);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [draftName, setDraftName] = useState("");
+  const [busySessionId, setBusySessionId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const { value, error, loading } = useAsync(async () => {
     const [greekFoundation, greekVocabulary, greekGrammar, latinVocabulary, henle] = await Promise.all([loadGreekDeck(), loadGreekLesson3VocabularyDeck(), loadGreekLesson3GrammarDeck(), loadLatinDeck(), loadHenle()]);
@@ -288,15 +291,18 @@ export function StatsPage() {
     const summaries = sources.map((source) => summarizeSource(source, stateFor(source, envelopes)));
     const cards = summaries.flatMap((row) => row.source.cards.map((card) => { const progress = row.state.cards[card.id]; return progress?.reviews ? summarizeCard(row.source, card, progress) : null; }).filter((item): item is CardPerformance => Boolean(item)));
     const rawEvents: ReviewEvent[] = [];
-    for (const card of cards) for (const review of card.progress.history) rawEvents.push({
-      language: card.source.language, source: card.source.source, mode: card.source.mode, sourceKey: sourceKey(card.source), cardKey: cardKey(card.source, card.card), cardId: card.card.id, reviewId: review.id,
-      prompt: card.prompt, reviewedAt: review.reviewedAt, result: review.result, difficulty: review.difficulty, responseTimeMs: review.responseTimeMs, intrinsicDifficulty: card.intrinsicDifficulty, review,
-      sessionId: review.sessionId, sessionStartedAt: review.sessionStartedAt, sessionName: review.sessionName, activityKind: review.activityKind,
-    });
+    for (const card of cards) for (const review of card.progress.history) {
+      if (review.statsExcluded) continue;
+      rawEvents.push({
+        language: card.source.language, source: card.source.source, mode: card.source.mode, sourceKey: sourceKey(card.source), cardKey: cardKey(card.source, card.card), cardId: card.card.id, reviewId: review.id,
+        prompt: card.prompt, reviewedAt: review.reviewedAt, result: review.result, difficulty: review.difficulty, responseTimeMs: review.responseTimeMs, intrinsicDifficulty: card.intrinsicDifficulty, review,
+        sessionId: review.sessionId, sessionStartedAt: review.sessionStartedAt, sessionName: review.sessionName, activityKind: review.activityKind,
+      });
+    }
     const { sessions, events } = buildSessions(rawEvents);
     events.sort((a, b) => b.reviewedAt - a.reviewedAt);
-    return { summaries, cards, sessions, events };
-  }, [user?.id]);
+    return { summaries, cards, sessions, events, envelopes };
+  }, [user?.id, revision]);
 
   const sessionIds = useMemo(() => value?.sessions.map((session) => session.id) ?? [], [value?.sessions]);
   const allSessionsSelected = selectedSessions === null;
@@ -304,8 +310,8 @@ export function StatsPage() {
     if (!value) return [];
     return allSessionsSelected ? value.events : value.events.filter((event) => event.scopeSessionId && (selectedSessions?.has(event.scopeSessionId) ?? false));
   }, [allSessionsSelected, selectedSessions, value]);
-  const scopedCards = useMemo(() => value ? cardsForScope(value.cards, scopedEvents, allSessionsSelected) : [], [allSessionsSelected, scopedEvents, value]);
-  const scopedRows = useMemo(() => value ? summariesForScope(value.summaries, scopedCards, allSessionsSelected) : [], [allSessionsSelected, scopedCards, value]);
+  const scopedCards = useMemo(() => value ? cardsForScope(value.cards, scopedEvents) : [], [scopedEvents, value]);
+  const scopedRows = useMemo(() => value ? summariesForScope(value.summaries, scopedCards) : [], [scopedCards, value]);
   const scopedSessions = useMemo(() => value ? (allSessionsSelected ? value.sessions : value.sessions.filter((session) => selectedSessions?.has(session.id) ?? false)) : [], [allSessionsSelected, selectedSessions, value]);
 
   if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;
@@ -316,7 +322,48 @@ export function StatsPage() {
     if (checked) next.add(id); else next.delete(id);
     setSelectedSessions(next.size === sessionIds.length ? null : next);
   }
-
+  function beginRename(session: SessionSummary) {
+    if (session.inferred) return;
+    setEditingSessionId(session.id);
+    setDraftName(session.name);
+    setActionError(null);
+  }
+  async function saveRename(session: SessionSummary) {
+    const name = draftName.trim();
+    if (!name || session.inferred) { setEditingSessionId(null); return; }
+    if (name === session.name) { setEditingSessionId(null); return; }
+    setBusySessionId(session.id); setActionError(null);
+    try {
+      const saves: Promise<unknown>[] = [];
+      for (const envelope of Object.values(value.envelopes)) {
+        if (!envelope) continue;
+        const mutation = renameSessionInEnvelope(envelope, session.id, name);
+        if (mutation.changed) saves.push(saveProgressEnvelope(mutation.envelope, user));
+      }
+      await Promise.all(saves);
+      setEditingSessionId(null); setDraftName(""); setRevision((current) => current + 1);
+    } catch (reason) { setActionError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setBusySessionId(null); }
+  }
+  async function deleteSession(session: SessionSummary) {
+    if (session.inferred) return;
+    const confirmed = window.confirm(`Delete “${session.name}” from session history?\n\nIts reviews will be removed from Stats and session history only. Card mastery, difficulty, strength, due dates, adaptive priorities, response-time memory, and Dickinson unlock progress will not change.`);
+    if (!confirmed) return;
+    setBusySessionId(session.id); setActionError(null);
+    try {
+      const saves: Promise<unknown>[] = [];
+      for (const envelope of Object.values(value.envelopes)) {
+        if (!envelope) continue;
+        const mutation = deleteSessionFromEnvelope(envelope, session.id);
+        if (mutation.changed) saves.push(saveProgressEnvelope(mutation.envelope, user));
+      }
+      await Promise.all(saves);
+      setSelectedSessions((current) => current === null ? null : new Set([...current].filter((id) => id !== session.id)));
+      if (editingSessionId === session.id) { setEditingSessionId(null); setDraftName(""); }
+      setRevision((current) => current + 1);
+    } catch (reason) { setActionError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setBusySessionId(null); }
+  }
 
   const greekRows = scopedRows.filter((row) => row.source.language === "Greek"), latinRows = scopedRows.filter((row) => row.source.language === "Latin");
   const greekCards = scopedCards.filter((card) => card.source.language === "Greek"), latinCards = scopedCards.filter((card) => card.source.language === "Latin");
@@ -330,11 +377,21 @@ export function StatsPage() {
       <div><p className="eyebrow">Continuous memory bank</p><h1>Study Stats</h1><p>Your complete Greek and Latin history is analyzed here. Use the session filter to compare one session, several sessions together, or your complete history.</p></div>
       <div className="stats-sync-note">{user ? <Cloud aria-hidden="true" /> : <Laptop aria-hidden="true" />}<span>{user ? "Showing your synced account progress" : "Showing guest progress saved on this device"}</span></div>
     </header>
-    {error && <div className="inline-alert">{error}</div>}
+    {(error || actionError) && <div className="inline-alert">{actionError || error}</div>}
 
     <section className="panel-surface stats-session-filter">
       <div className="stats-section-heading"><div><p className="eyebrow">Stats scope</p><h2>Choose sessions</h2><p>{filterLabel}. Every score, card analysis, trend, and review list below follows this selection.</p></div><div className="stats-filter-actions"><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(null)}>All</button><button className="small-outline-button" type="button" onClick={() => setSelectedSessions(new Set())}>Clear</button></div></div>
-      {value.sessions.length ? <div className="stats-session-picker">{[...value.sessions].sort((a, b) => b.startedAt - a.startedAt).map((session) => <div className="stats-session-choice" key={session.id}><label><input type="checkbox" checked={allSessionsSelected || (selectedSessions?.has(session.id) ?? false)} onChange={(event) => toggleSession(session.id, event.target.checked)} /><span><strong>{sessionName(session)}</strong><small>{session.language} · {dateTime(session.startedAt)} · {session.reviews} reviews · score {session.score.toFixed(1)}</small></span></label><button className="text-button" type="button" onClick={() => setSelectedSessions(new Set([session.id]))}>Only</button></div>)}</div> : <p className="stats-empty">Complete reviews to create sessions.</p>}
+      {value.sessions.length ? <div className="stats-session-picker">{[...value.sessions].sort((a, b) => b.startedAt - a.startedAt).map((session) => {
+        const editing = editingSessionId === session.id, busy = busySessionId === session.id;
+        return <div className="stats-session-choice" key={session.id}>
+          <input type="checkbox" aria-label={`Include ${session.name} in Stats`} checked={allSessionsSelected || (selectedSessions?.has(session.id) ?? false)} onChange={(event) => toggleSession(session.id, event.target.checked)} />
+          <div style={{ minWidth: 0, flex: "1 1 auto", display: "grid", gap: "0.14rem" }}>
+            {editing ? <input autoFocus value={draftName} maxLength={80} aria-label="Session name" disabled={busy} style={{ margin: 0, width: "100%", minWidth: 0, padding: "0.25rem 0.4rem", border: "1px solid var(--line)", borderRadius: "6px", background: "var(--surface)", color: "var(--foreground)", font: "inherit", fontWeight: 700 }} onFocus={(event) => event.currentTarget.select()} onChange={(event) => setDraftName(event.target.value)} onBlur={() => void saveRename(session)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur(); } if (event.key === "Escape") { event.preventDefault(); setEditingSessionId(null); setDraftName(""); } }} /> : session.inferred ? <strong>{sessionName(session)}</strong> : <strong role="button" tabIndex={0} title="Double-click to rename" onDoubleClick={() => beginRename(session)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === "F2") beginRename(session); }}>{sessionName(session)}</strong>}
+            <small>{session.language} · {dateTime(session.startedAt)} · {session.reviews} reviews · score {session.score.toFixed(1)}</small>
+          </div>
+          <div className="stats-filter-actions"><button className="text-button" type="button" onClick={() => setSelectedSessions(new Set([session.id]))}>Only</button>{!session.inferred && <button className="text-button" type="button" disabled={busy} onClick={() => void deleteSession(session)}>Delete</button>}</div>
+        </div>;
+      })}</div> : <p className="stats-empty">Complete reviews to create sessions.</p>}
     </section>
 
     <section className="panel-surface stats-score-banner">
@@ -384,8 +441,8 @@ function LanguageStats({ language, rows, cards, sessions, href, sessionName }: {
     </div>
 
     <div className="panel-surface stats-table-wrap">
-      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Session names are managed in Account and appear here automatically.</p></div><TrendingUp aria-hidden="true" /></div>
-      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table stats-session-table"><thead><tr><th>Rank</th><th>Session</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Score</th><th>Vs. previous</th><th>Actions</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td><strong>{sessionName(session)}</strong><span className="stats-session-date">{dateTime(session.startedAt)}{session.inferred ? " · legacy inferred" : ""}</span></td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td><td><div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}<Link className="small-outline-button" to="/account">Manage</Link></div></td></tr>)}</tbody></table></div> : <p className="stats-empty">No sessions match this Stats selection.</p>}
+      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>Use Continue to reopen an explicit past session. Double-click a session name under Choose sessions to rename it. Deleting a session changes Stats only, not adaptive study memory.</p></div><TrendingUp aria-hidden="true" /></div>
+      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table stats-session-table"><thead><tr><th>Rank</th><th>Session</th><th>Reviews</th><th>Accuracy</th><th>Avg. difficulty</th><th>Total time</th><th>Avg. time</th><th>Score</th><th>Vs. previous</th><th>Actions</th></tr></thead><tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td><strong>{sessionName(session)}</strong><span className="stats-session-date">{dateTime(session.startedAt)}{session.inferred ? " · legacy inferred" : ""}</span></td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{difficultyLabel(session.averageCardDifficulty)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td><td><div className="stats-session-actions">{!session.inferred && <Link className="small-outline-button" to={`${href}?session=${encodeURIComponent(session.id)}&sessionStartedAt=${session.startedAt}`}>Continue</Link>}</div></td></tr>)}</tbody></table></div> : <p className="stats-empty">No sessions match this Stats selection.</p>}
     </div>
 
     <div className="panel-surface stats-table-wrap">

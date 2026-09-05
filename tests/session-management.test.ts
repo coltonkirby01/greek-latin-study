@@ -54,19 +54,32 @@ describe("session management", () => {
     expect(review?.sessionName).toBe("Friday quiz practice");
   });
 
-  it("deletes only the chosen session, recalculates review stats, and preserves Dickinson unlock progress", () => {
-    const mutation = deleteSessionFromEnvelope(envelopeWithTwoSessions(), "session-b", 100);
+  it("hides a deleted session from Stats without changing adaptive memory", () => {
+    const before = envelopeWithTwoSessions();
+    const beforeMode = structuredClone(before.modes.forward);
+    const beforeProgress = structuredClone(beforeMode.cards.one);
+    const mutation = deleteSessionFromEnvelope(before, "session-b", 100);
     const mode = mutation.envelope.modes.forward;
     const progress = mode.cards.one;
+
     expect(mutation.reviewIds).toEqual(["r2"]);
-    expect(progress.history.map((review) => review.id)).toEqual(["r1"]);
-    expect(progress.reviews).toBe(1);
-    expect(progress.right).toBe(1);
-    expect(progress.wrong).toBe(0);
-    expect(progress.initialMastered).toBe(true);
-    expect(mode.totalReviews).toBe(1);
-    expect(mode.rightReviews).toBe(1);
-    expect(mode.wrongReviews).toBe(0);
+    expect(progress.history).toHaveLength(2);
+    expect(progress.history.find((review) => review.id === "r2")?.statsExcluded).toBe(true);
+    expect(progress.reviews).toBe(beforeProgress.reviews);
+    expect(progress.right).toBe(beforeProgress.right);
+    expect(progress.wrong).toBe(beforeProgress.wrong);
+    expect(progress.easy).toBe(beforeProgress.easy);
+    expect(progress.hard).toBe(beforeProgress.hard);
+    expect(progress.initialMastered).toBe(beforeProgress.initialMastered);
+    expect(progress.strength).toBe(beforeProgress.strength);
+    expect(progress.intervalMs).toBe(beforeProgress.intervalMs);
+    expect(progress.dueAt).toBe(beforeProgress.dueAt);
+    expect(progress.responseTimeTotalMs).toBe(beforeProgress.responseTimeTotalMs);
+    expect(mode.totalReviews).toBe(beforeMode.totalReviews);
+    expect(mode.rightReviews).toBe(beforeMode.rightReviews);
+    expect(mode.wrongReviews).toBe(beforeMode.wrongReviews);
+    expect(mode.reviewSequence).toEqual(beforeMode.reviewSequence);
     expect(mode.unlockedCount).toBe(150);
+    expect(collectManagedSessions({ "dickinson-latin-core": mutation.envelope }).map((session) => session.id)).toEqual(["session-a"]);
   });
 });

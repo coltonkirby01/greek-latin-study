@@ -1,4 +1,4 @@
-import type { CardProgress, DeckProgressEnvelope, ReviewRecord } from "./types";
+import type { DeckProgressEnvelope, ReviewRecord } from "./types";
 
 export type ManagedSession = {
   id: string;
@@ -49,7 +49,7 @@ export function collectManagedSessions(envelopes: Record<string, DeckProgressEnv
       const source = sourceLabel(deckId, studyKey);
       for (const progress of Object.values(mode.cards)) {
         for (const review of progress.history) {
-          if (!review.sessionId || review.activityKind === "warmup") continue;
+          if (!review.sessionId || review.activityKind === "warmup" || review.statsExcluded) continue;
           const startedAt = review.sessionStartedAt ?? review.reviewedAt;
           const existing = sessions.get(review.sessionId);
           if (existing) {
@@ -111,60 +111,6 @@ export function renameSessionInEnvelope(envelope: DeckProgressEnvelope, sessionI
   return { envelope: next, changed, reviewIds };
 }
 
-function rebuildProgress(progress: CardProgress, remaining: ReviewRecord[], removedCount: number): CardProgress {
-  const next = structuredClone(progress);
-  next.history = [...remaining].sort((a, b) => a.reviewedAt - b.reviewedAt);
-  next.presented = Math.max(next.history.length, next.presented - removedCount);
-  next.reviews = next.history.length;
-  next.right = 0;
-  next.wrong = 0;
-  next.easy = 0;
-  next.medium = 0;
-  next.hard = 0;
-  next.initialMastered = false;
-  next.streak = 0;
-  next.bestStreak = 0;
-  next.lapses = 0;
-  next.responseTimeTotalMs = 0;
-  next.responseTimeCount = 0;
-  next.lastReviewedAt = 0;
-  next.lastResult = null;
-  next.lastDifficulty = null;
-  next.lastResponseTimeMs = 0;
-  next.intervalMs = 0;
-  next.dueAt = 0;
-  next.strength = 0;
-
-  let streak = 0;
-  for (const review of next.history) {
-    next[review.result] += 1;
-    next[review.difficulty] += 1;
-    next.responseTimeTotalMs += review.responseTimeMs;
-    next.responseTimeCount += 1;
-    if (review.result === "right") {
-      next.initialMastered = true;
-      streak += 1;
-    } else {
-      streak = 0;
-      next.lapses += 1;
-    }
-    next.bestStreak = Math.max(next.bestStreak, streak);
-  }
-  next.streak = streak;
-
-  const last = next.history.at(-1);
-  if (last) {
-    next.lastReviewedAt = last.reviewedAt;
-    next.lastResult = last.result;
-    next.lastDifficulty = last.difficulty;
-    next.lastResponseTimeMs = last.responseTimeMs;
-    next.intervalMs = last.intervalMs;
-    next.dueAt = last.reviewedAt + last.intervalMs;
-    next.strength = last.strength;
-  }
-  return next;
-}
-
 export function deleteSessionFromEnvelope(envelope: DeckProgressEnvelope, sessionId: string, now = Date.now()): SessionMutation {
   const next = structuredClone(envelope);
   let changed = false;
@@ -172,26 +118,21 @@ export function deleteSessionFromEnvelope(envelope: DeckProgressEnvelope, sessio
 
   for (const mode of Object.values(next.modes)) {
     let modeChanged = false;
-    for (const [cardId, progress] of Object.entries(mode.cards)) {
-      const removed = progress.history.filter((review) => review.sessionId === sessionId && review.activityKind !== "warmup");
-      if (!removed.length) continue;
-      changed = true;
-      modeChanged = true;
-      reviewIds.push(...removed.map((review) => review.id));
-      const remaining = progress.history.filter((review) => review.sessionId !== sessionId || review.activityKind === "warmup");
-      mode.cards[cardId] = rebuildProgress(progress, remaining, removed.length);
+    for (const progress of Object.values(mode.cards)) {
+      progress.history = progress.history.map((review) => {
+        if (review.sessionId !== sessionId || review.activityKind === "warmup" || review.statsExcluded) return review;
+        changed = true;
+        modeChanged = true;
+        reviewIds.push(review.id);
+        return { ...review, statsExcluded: true };
+      });
     }
-    if (modeChanged) {
-      const progress = Object.values(mode.cards);
-      mode.totalReviews = progress.reduce((sum, card) => sum + card.reviews, 0);
-      mode.rightReviews = progress.reduce((sum, card) => sum + card.right, 0);
-      mode.wrongReviews = mode.totalReviews - mode.rightReviews;
-      mode.updatedAt = Math.max(mode.updatedAt, now);
-      // Deliberately preserve unlockedCount: deleting history lowers statistics and
-      // recalculates memory, but does not re-lock material the learner already reached.
-    }
+    if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
   }
 
+  // Card counters, strength, intervals, due dates, response-time memory, review
+  // sequence, mastery, and staged unlocks are intentionally untouched. The
+  // session disappears from history/Stats but remains part of adaptive memory.
   if (changed) next.updatedAt = Math.max(next.updatedAt, now);
   return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
 }
