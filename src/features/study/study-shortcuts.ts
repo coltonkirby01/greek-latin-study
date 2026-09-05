@@ -3,6 +3,7 @@ import type { ReviewDifficulty, ReviewResult } from "./types";
 export type StudyShortcut =
   | { type: "start" }
   | { type: "reveal" }
+  | { type: "flip" }
   | { type: "result"; value: ReviewResult }
   | { type: "difficulty"; value: ReviewDifficulty }
   | { type: "save" }
@@ -30,6 +31,7 @@ export function studyShortcut({ key, startGateOpen, revealed, result, difficulty
   if (key === "1") return { type: "difficulty", value: "easy" };
   if (key === "2") return { type: "difficulty", value: "medium" };
   if (key === "3") return { type: "difficulty", value: "hard" };
-  if ((key === "Enter" || key === " ") && result && difficulty) return { type: "save" };
+  if (key === "Enter") return { type: "flip" };
+  if (key === " " && result && difficulty) return { type: "save" };
   return null;
 }
