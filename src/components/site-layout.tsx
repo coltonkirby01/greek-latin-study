@@ -21,6 +21,12 @@ export function SiteLayout() {
       </div>
     </header>
     <Outlet />
-    <footer className="site-footer"><Link className="footer-mark" to="/"><BookOpenText /> Greek &amp; Latin Study</Link><span>Active recall · adaptive review · reading aloud</span></footer>
+    <footer className="site-footer">
+      <Link className="footer-mark" to="/"><BookOpenText /> Greek &amp; Latin Study</Link>
+      <div className="site-footer-copy">
+        <span>Active recall · adaptive review · reading aloud</span>
+        <nav className="footer-links" aria-label="Legal"><a href={`${import.meta.env.BASE_URL}privacy/`}>Privacy</a><a href={`${import.meta.env.BASE_URL}terms/`}>Terms</a></nav>
+      </div>
+    </footer>
   </>;
 }

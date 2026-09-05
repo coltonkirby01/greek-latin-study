@@ -7,6 +7,9 @@ The application code already supports email/password signup and sign-in, passwor
 | Setting | Exact value |
 | --- | --- |
 | Application URL / Supabase Site URL | `https://coltonkirby01.github.io/greeklatinstudy/` |
+| Google application home page | `https://coltonkirby01.github.io/greeklatinstudy/` |
+| Google privacy policy | `https://coltonkirby01.github.io/greeklatinstudy/privacy/` |
+| Google terms of service | `https://coltonkirby01.github.io/greeklatinstudy/terms/` |
 | Application account callback | `https://coltonkirby01.github.io/greeklatinstudy/account` |
 | Password-recovery callback | `https://coltonkirby01.github.io/greeklatinstudy/account?reset=1` |
 | Google authorized JavaScript origin | `https://coltonkirby01.github.io` |

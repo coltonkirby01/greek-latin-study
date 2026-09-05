@@ -39,6 +39,7 @@ src/
     study/                 timer, adaptive scheduler, progress, Back/Skip, shared UI
   pages/                   route-level screens
 public/data/               versioned built-in source data
+public/privacy/, terms/    crawlable privacy and terms pages
 supabase/migrations/       complete schema and RLS policies
 supabase/functions/tts/    optional secret-bearing TTS proxy
 tests/                     invariant and behavior tests
