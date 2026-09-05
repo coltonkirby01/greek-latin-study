@@ -7,9 +7,14 @@ import { buildHenleCharts } from "../src/features/henle/henle-data";
 describe("authoritative source migration", () => {
   it("preserves all existing source deck counts", () => {
     const greek = JSON.parse(fs.readFileSync("public/data/greek-cards.json", "utf8"));
+    const greekLesson3Vocabulary = JSON.parse(fs.readFileSync("public/data/greek-lesson3-vocab.json", "utf8"));
+    const greekLesson3Grammar = JSON.parse(fs.readFileSync("public/data/greek-lesson3-grammar.json", "utf8"));
     const latin = latinRowsToCards(parseCsv(fs.readFileSync("public/data/dickinson-latin-core.csv", "utf8")));
     const henle = JSON.parse(fs.readFileSync("public/data/henle-part1-forms.json", "utf8"));
     expect(greek).toHaveLength(55);
+    expect(greekLesson3Vocabulary).toHaveLength(11);
+    expect(greekLesson3Grammar).toHaveLength(11);
+    expect(new Set(greekLesson3Grammar.map((card: { category: string }) => card.category))).toEqual(new Set(["Present Active Indicative", "Present Active Infinitive", "Present Active Imperative"]));
     expect(latin).toHaveLength(997);
     expect(henle.cards).toHaveLength(2_062);
     expect(new Set(henle.cards.map((card: { id: string }) => card.id)).size).toBe(2_062);
