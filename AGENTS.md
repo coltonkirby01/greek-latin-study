@@ -6,12 +6,24 @@ Treat the repository root as authoritative. Do not edit the retired `greek-latin
 
 Preserve existing study behavior unless the requested change explicitly modifies it. New features must not silently break, merge, reset, or reinterpret existing decks, statistics, mastery, review history, authentication, or synchronization behavior.
 
+## App structure and filtering
+
+- The public study navigation has one Greek app and one Latin app. Do not reintroduce separate Henle, vocabulary, grammar, or Decks apps/pages in the primary navigation.
+- `/henle` is a compatibility redirect into `/latin`; Henle grammar is studied inside the Latin app.
+- Individual imported/custom deck routes under `/decks/:slug` may remain addressable, but there is no standalone `/decks` library page or Decks navigation item.
+- Greek card-type filtering is multi-select: uppercase, lowercase, punctuation, and accent marks can be studied singly or in any combination.
+- Latin is a unified study surface. Dickinson vocabulary, Henle individual forms, and Henle whole charts can be selected singly or combined in one study pool.
+- Latin grammar filters are hierarchical and composable. Broad sections can be narrowed by verb family, voice, and form/mood (for example Verbs + Active Voice + Indicative).
+- Filters should narrow the cards presented without erasing or replacing stored study history.
+- Changing a study filter or direction must return the session to the Start gate before timing resumes.
+
 ## Built-in deck invariants
 
 - Built-in source counts are Greek 55, Dickinson Latin 997, Henle 2,062 unique cards across 331 rules, and 248 whole-chart groups.
 - Any deck-data change must update and pass the source-count tests deliberately.
 - Preserve spelling, accents, breathing marks, macrons, principal parts, gender, and other source forms unless the task explicitly corrects source data.
-- Existing decks must remain independently usable after adding or changing another deck.
+- Existing source decks remain independently persisted even when the Latin UI interleaves cards from multiple sources.
+- Dickinson's staged introduction remains 100 cards initially and 25 additional cards at a time; filtering or mixing with grammar must not silently expose locked Dickinson cards.
 
 ## Study directions and progress
 
@@ -19,6 +31,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Forward and Reverse are logically separate study directions even when they use the same underlying card.
 - Preserve per-direction statistics and scheduling.
 - A card's displayed flip/front-back behavior must not collapse the logical distinction between Forward and Reverse.
+- Mixed Latin sessions may rank cards from multiple persisted sources together, but each review must save to its original deck and study mode.
 
 ## Review and mastery behavior
 
@@ -70,11 +83,12 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Preserve the existing visual language and responsive layout unless redesign is explicitly requested.
 - New controls should work in both light and dark themes through the existing CSS variables.
 - Do not expose answers in previews, priority lists, metadata, aria-labels, or other hidden/accessibility text where the answer is meant to remain concealed.
+- Make the flexibility of Greek and Latin study filters obvious in page/home descriptions; users should not have to discover by accident that categories can be combined.
 
 ## Performance
 
 - Keep the initial route lightweight. Prefer route-level lazy loading and feature-scoped CSS over loading all feature code/styles on the homepage.
-- Do not eagerly load large deck data, especially Henle, unless the user enters that feature.
+- Do not eagerly load the 1.18 MB Henle source data when a user opens Latin for vocabulary only. Load Henle only after a grammar source is selected.
 - Prefer small, stable shared components over duplicated markup, but avoid abstraction that adds runtime work without reducing maintenance risk.
 - Before adding a large dependency, verify that the capability cannot be implemented with existing dependencies or platform APIs.
 - The production build enforces a bundle budget in `scripts/check-bundle-size.mjs`: main JavaScript must remain at or below 160 KB gzip and total CSS at or below 12 KB gzip. Do not raise these limits merely to make a change pass; first reduce the added payload or document why a deliberate budget increase is warranted.
@@ -83,5 +97,5 @@ Preserve existing study behavior unless the requested change explicitly modifies
 
 - Run `npm run check` before proposing or merging code changes.
 - Fix TypeScript, test, and production-build failures caused by the change before completion.
-- For changes affecting timer, grading, Back, direction separation, staged unlocking, priority answers, or source data, explicitly verify those invariants in addition to the general check.
+- For changes affecting timer, grading, Back, direction separation, staged unlocking, priority answers, filtering, mixed-source study, or source data, explicitly verify those invariants in addition to the general check.
 - Prefer focused changes over broad refactors unless a refactor is necessary for correctness.
