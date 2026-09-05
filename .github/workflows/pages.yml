@@ -28,6 +28,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Audit high-severity dependencies
+        run: npm audit --audit-level=high
       - run: npm test
       - run: npm run build:pages
       - if: github.event_name != 'pull_request'
