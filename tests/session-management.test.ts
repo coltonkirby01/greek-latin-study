@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEnvelope, createModeState, presentCard, recordReview } from "../src/features/study/engine";
-import { automaticManagedSessionName, collectManagedSessions, deleteSessionFromEnvelope, displayManagedSessionName, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
+import { automaticManagedSessionName, collectManagedSessions, deleteReviewsFromStatsInEnvelope, deleteSessionFromEnvelope, displayManagedSessionName, renameReviewsInEnvelope, renameSessionInEnvelope, sessionCustomNameFromReviews } from "../src/features/study/session-management";
 import type { StudyCard } from "../src/features/study/types";
 
 const cards: StudyCard[] = [
@@ -16,6 +16,17 @@ function envelopeWithTwoSessions() {
   mode = recordReview(mode, cards[0], { id: "r1", result: "right", difficulty: "easy", responseTimeMs: 1_000, reviewedAt: 20, sessionId: "session-a", sessionStartedAt: 5 });
   mode = presentCard(mode, cards[0], 30);
   mode = recordReview(mode, cards[0], { id: "r2", result: "wrong", difficulty: "hard", responseTimeMs: 4_000, reviewedAt: 40, sessionId: "session-b", sessionStartedAt: 25 });
+  envelope.modes.forward = mode;
+  envelope.updatedAt = mode.updatedAt;
+  return envelope;
+}
+
+function envelopeWithLegacyReview() {
+  const envelope = createEnvelope("dickinson-latin-core", 1);
+  let mode = createModeState("dickinson-latin-core", "forward", 997, { initialCount: 100, batchSize: 25 }, 1);
+  mode.unlockedCount = 150;
+  mode = presentCard(mode, cards[0], 10);
+  mode = recordReview(mode, cards[0], { id: "legacy-r1", result: "right", difficulty: "medium", responseTimeMs: 2_000, reviewedAt: 20 });
   envelope.modes.forward = mode;
   envelope.updatedAt = mode.updatedAt;
   return envelope;
@@ -54,6 +65,13 @@ describe("session management", () => {
     expect(review?.sessionName).toBe("Friday quiz practice");
   });
 
+  it("renames legacy reviews by review id without requiring a session id", () => {
+    const mutation = renameReviewsInEnvelope(envelopeWithLegacyReview(), ["legacy-r1"], "Old Latin practice", 100);
+    const review = mutation.envelope.modes.forward.cards.one.history.find((item) => item.id === "legacy-r1");
+    expect(mutation.changed).toBe(true);
+    expect(review?.sessionName).toBe("Old Latin practice");
+  });
+
   it("hides a deleted session from Stats without changing adaptive memory", () => {
     const before = envelopeWithTwoSessions();
     const beforeMode = structuredClone(before.modes.forward);
@@ -81,5 +99,24 @@ describe("session management", () => {
     expect(mode.reviewSequence).toEqual(beforeMode.reviewSequence);
     expect(mode.unlockedCount).toBe(150);
     expect(collectManagedSessions({ "dickinson-latin-core": mutation.envelope }).map((session) => session.id)).toEqual(["session-a"]);
+  });
+
+  it("hides legacy reviews from Stats without changing adaptive memory", () => {
+    const before = envelopeWithLegacyReview();
+    const beforeMode = structuredClone(before.modes.forward);
+    const beforeProgress = structuredClone(beforeMode.cards.one);
+    const mutation = deleteReviewsFromStatsInEnvelope(before, ["legacy-r1"], 100);
+    const mode = mutation.envelope.modes.forward;
+    const progress = mode.cards.one;
+
+    expect(mutation.changed).toBe(true);
+    expect(progress.history.find((review) => review.id === "legacy-r1")?.statsExcluded).toBe(true);
+    expect(progress.reviews).toBe(beforeProgress.reviews);
+    expect(progress.strength).toBe(beforeProgress.strength);
+    expect(progress.intervalMs).toBe(beforeProgress.intervalMs);
+    expect(progress.dueAt).toBe(beforeProgress.dueAt);
+    expect(mode.totalReviews).toBe(beforeMode.totalReviews);
+    expect(mode.reviewSequence).toEqual(beforeMode.reviewSequence);
+    expect(mode.unlockedCount).toBe(150);
   });
 });
