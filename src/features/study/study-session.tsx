@@ -13,6 +13,8 @@ import { useResponseTimer } from "./use-response-timer";
 
 type Props = { deck: DeckDefinition; cards?: StudyCard[]; studyKey: string; direction: StudyDirection; onDirectionChange?: (direction: StudyDirection) => void; directionLabels?: { forward: string; reverse: string }; toolbarExtra?: ReactNode; cardMeta?: (card: StudyCard) => string; renderFront?: (card: StudyCard, copy: DirectionalCardCopy) => ReactNode; renderBack?: (card: StudyCard, copy: DirectionalCardCopy) => ReactNode; priorityPrompt?: (card: StudyCard, copy: DirectionalCardCopy) => ReactNode };
 type SyncStatus = "loading" | "local" | "syncing" | "cloud" | "error";
+type SessionMeta = { id: string; startedAt: number };
+const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
 
 export function StudySession({ deck, cards = deck.cards, studyKey, direction, onDirectionChange, directionLabels = { forward: "Forward", reverse: "Reverse" }, toolbarExtra, cardMeta, renderFront, renderBack, priorityPrompt }: Props) {
   const { user } = useAuth();
@@ -23,6 +25,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("loading"), [notice, setNotice] = useState<string | null>(null);
   const [backtracking, setBacktracking] = useState(false);
   const [startGateOpen, setStartGateOpen] = useState(true);
+  const [session, setSession] = useState<SessionMeta>(makeSession);
   const lastStudyKey = useRef(studyKey);
 
   const saveMode = useCallback(async (nextMode: StudyModeState, options?: { review?: ReviewTransaction; deleteReviewId?: string }) => {
@@ -57,10 +60,19 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
   function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!modeState || !current) return; const selected = pickNextCard(cards, modeState, next, { excludeCardId: current.id, staged: deck.staged }); if (selected) { resetUi(); void saveMode(presentCard(modeState, selected)); } }
   function skip() { if (!modeState || editingTransaction) return; resetUi(); void saveMode(skipAndAdvance(modeState, cards, selectionMode, deck.staged)); }
+  function startNewSession() {
+    if (!modeState) return;
+    const nextSession = makeSession();
+    setSession(nextSession); setLastTransaction(null); resetUi(); setStartGateOpen(true);
+    const selected = pickNextCard(cards, modeState, selectionMode, { excludeCardId: current?.id, staged: deck.staged });
+    if (selected) void saveMode(presentCard(modeState, selected));
+    setNotice("New session started. Your long-term mastery and adaptive priorities were preserved.");
+  }
   function back() { if (!lastTransaction || !modeState) return; const transaction = lastTransaction; setLastTransaction(null); setEditingTransaction(transaction); setResult(transaction.result); setDifficulty(transaction.difficulty); setCapturedTimeMs(transaction.responseTimeMs); setBacktracking(true); setRevealed(false); setReviewFront(false); void saveMode(transaction.beforeState, { deleteReviewId: transaction.reviewId }); requestAnimationFrame(() => requestAnimationFrame(() => setRevealed(true))); setNotice("Previous grade undone. Choose the corrected result and save it."); }
   function saveNext() {
     if (!modeState || !current || !result || !difficulty) return; const reviewedAt = Date.now(), reviewId = editingTransaction?.reviewId, source = editingTransaction?.beforeState ?? modeState;
-    const applied = reviewAndAdvance(source, cards, selectionMode, { id: reviewId, result, difficulty, responseTimeMs: capturedTimeMs ?? timer.capture(), reviewedAt }, deck.staged);
+    const sessionId = editingTransaction?.sessionId ?? session.id, sessionStartedAt = editingTransaction?.sessionStartedAt ?? session.startedAt;
+    const applied = reviewAndAdvance(source, cards, selectionMode, { id: reviewId, result, difficulty, responseTimeMs: capturedTimeMs ?? timer.capture(), reviewedAt, sessionId, sessionStartedAt }, deck.staged);
     const corrected = Boolean(editingTransaction); setLastTransaction(applied.transaction); resetUi(); void saveMode(applied.state, { review: applied.transaction });
     setNotice(applied.state.lastUnlock?.at === reviewedAt ? `New cards unlocked: ${applied.state.lastUnlock.start}–${applied.state.lastUnlock.end}.` : corrected ? "Previous grade corrected." : "Progress saved.");
   }
@@ -98,6 +110,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
         <div className="toolbar-control-group">
           {deck.supportsReverse && onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
+          <button type="button" className="small-outline-button" onClick={startNewSession} disabled={Boolean(editingTransaction)}>New session</button>
           <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || editingTransaction || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
           {toolbarExtra}
