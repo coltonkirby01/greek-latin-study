@@ -25,15 +25,46 @@ export function removeDeletedReviewHistory(envelope: DeckProgressEnvelope, revie
   return envelopeChanged ? { ...envelope, modes } : envelope;
 }
 
+export function excludeDeletedSessionHistory(envelope: DeckProgressEnvelope, reviewIds: readonly string[], sessionIds: readonly string[]) {
+  const excludedReviews = new Set(reviewIds), excludedSessions = new Set(sessionIds);
+  if (!excludedReviews.size && !excludedSessions.size) return envelope;
+  let envelopeChanged = false;
+  const modes = Object.fromEntries(Object.entries(envelope.modes).map(([studyKey, mode]) => {
+    let modeChanged = false;
+    const cards = Object.fromEntries(Object.entries(mode.cards).map(([cardId, progress]) => {
+      let historyChanged = false;
+      const history = progress.history.map((review) => {
+        if (!excludedReviews.has(review.id) && !(review.sessionId && excludedSessions.has(review.sessionId))) return review;
+        const alreadyExcluded = review.statsExcluded && !review.sessionId && !review.sessionStartedAt && !review.sessionName;
+        if (alreadyExcluded) return review;
+        const { sessionId: _sessionId, sessionStartedAt: _sessionStartedAt, sessionName: _sessionName, ...learningReview } = review;
+        historyChanged = true;
+        return { ...learningReview, statsExcluded: true };
+      });
+      if (!historyChanged) return [cardId, progress];
+      modeChanged = true;
+      envelopeChanged = true;
+      return [cardId, { ...progress, history }];
+    }));
+    return [studyKey, modeChanged ? { ...mode, cards } : mode];
+  }));
+  return envelopeChanged ? { ...envelope, modes } : envelope;
+}
+
 function preparedEnvelope(envelope: DeckProgressEnvelope, extraDeletedIds: readonly string[] = [], keepPending = true): DeckProgressEnvelope {
   const pendingDeletedReviewIds = uniqueReviewIds(envelope.pendingDeletedReviewIds);
   const deletedReviewIds = uniqueReviewIds(envelope.deletedReviewIds, pendingDeletedReviewIds, extraDeletedIds);
-  const sanitized = removeDeletedReviewHistory(envelope, deletedReviewIds);
-  const { deletedReviewIds: _deleted, pendingDeletedReviewIds: _pending, ...base } = sanitized;
+  const sessionDeletedReviewIds = uniqueReviewIds(envelope.sessionDeletedReviewIds);
+  const deletedSessionIds = uniqueReviewIds(envelope.deletedSessionIds);
+  const withoutPhysicallyDeleted = removeDeletedReviewHistory(envelope, deletedReviewIds);
+  const sanitized = excludeDeletedSessionHistory(withoutPhysicallyDeleted, sessionDeletedReviewIds, deletedSessionIds);
+  const { deletedReviewIds: _deleted, pendingDeletedReviewIds: _pending, sessionDeletedReviewIds: _sessionDeleted, deletedSessionIds: _deletedSessions, ...base } = sanitized;
   return {
     ...base,
     ...(deletedReviewIds.length ? { deletedReviewIds } : {}),
     ...(keepPending && pendingDeletedReviewIds.length ? { pendingDeletedReviewIds } : {}),
+    ...(sessionDeletedReviewIds.length ? { sessionDeletedReviewIds } : {}),
+    ...(deletedSessionIds.length ? { deletedSessionIds } : {}),
   };
 }
 
@@ -50,22 +81,26 @@ export function loadLocalEnvelope(deckId: string) {
 export function saveLocalEnvelope(envelope: DeckProgressEnvelope) {
   const current = rawLocalEnvelope(envelope.deckId);
   const deletedReviewIds = uniqueReviewIds(current?.deletedReviewIds, current?.pendingDeletedReviewIds);
-  const persisted = preparedEnvelope(envelope, deletedReviewIds);
+  const sessionDeletedReviewIds = uniqueReviewIds(current?.sessionDeletedReviewIds, envelope.sessionDeletedReviewIds);
+  const deletedSessionIds = uniqueReviewIds(current?.deletedSessionIds, envelope.deletedSessionIds);
+  const persisted = preparedEnvelope({ ...envelope, sessionDeletedReviewIds, deletedSessionIds }, deletedReviewIds);
   localStorage.setItem(localKey(persisted.deckId), JSON.stringify(persisted));
 }
 
 export function mergeProgressEnvelopes(local: DeckProgressEnvelope | null, remote: DeckProgressEnvelope | null) {
   const deletedReviewIds = uniqueReviewIds(local?.deletedReviewIds, local?.pendingDeletedReviewIds, remote?.deletedReviewIds, remote?.pendingDeletedReviewIds);
   const pendingDeletedReviewIds = uniqueReviewIds(local?.pendingDeletedReviewIds, remote?.pendingDeletedReviewIds);
-  const cleanLocal = local ? preparedEnvelope({ ...local, pendingDeletedReviewIds }, deletedReviewIds) : null;
-  const cleanRemote = remote ? preparedEnvelope({ ...remote, pendingDeletedReviewIds }, deletedReviewIds) : null;
+  const sessionDeletedReviewIds = uniqueReviewIds(local?.sessionDeletedReviewIds, remote?.sessionDeletedReviewIds);
+  const deletedSessionIds = uniqueReviewIds(local?.deletedSessionIds, remote?.deletedSessionIds);
+  const cleanLocal = local ? preparedEnvelope({ ...local, pendingDeletedReviewIds, sessionDeletedReviewIds, deletedSessionIds }, deletedReviewIds) : null;
+  const cleanRemote = remote ? preparedEnvelope({ ...remote, pendingDeletedReviewIds, sessionDeletedReviewIds, deletedSessionIds }, deletedReviewIds) : null;
   if (!cleanLocal) return cleanRemote;
   if (!cleanRemote) return cleanLocal;
   const modes = { ...cleanRemote.modes };
   for (const [key, mode] of Object.entries(cleanLocal.modes)) {
     if (!modes[key] || mode.updatedAt > modes[key].updatedAt) modes[key] = mode;
   }
-  return preparedEnvelope({ ...cleanRemote, updatedAt: Math.max(cleanLocal.updatedAt, cleanRemote.updatedAt), modes, pendingDeletedReviewIds }, deletedReviewIds);
+  return preparedEnvelope({ ...cleanRemote, updatedAt: Math.max(cleanLocal.updatedAt, cleanRemote.updatedAt), modes, pendingDeletedReviewIds, sessionDeletedReviewIds, deletedSessionIds }, deletedReviewIds);
 }
 
 export async function loadProgressEnvelope(deckId: string, user: User | null) {
@@ -78,6 +113,8 @@ export async function loadProgressEnvelope(deckId: string, user: User | null) {
     const needsPush = !remote
       || Object.entries(winner.modes).some(([key, mode]) => !remote.modes[key] || mode.updatedAt > remote.modes[key].updatedAt)
       || !sameReviewIds(winner.deletedReviewIds, remote.deletedReviewIds)
+      || !sameReviewIds(winner.sessionDeletedReviewIds, remote.sessionDeletedReviewIds)
+      || !sameReviewIds(winner.deletedSessionIds, remote.deletedSessionIds)
       || Boolean(winner.pendingDeletedReviewIds?.length);
     if (needsPush) await saveProgressEnvelope(winner, user);
   }
@@ -88,7 +125,9 @@ export async function saveProgressEnvelope(envelope: DeckProgressEnvelope, user:
   const current = rawLocalEnvelope(envelope.deckId);
   const pendingDeletedReviewIds = uniqueReviewIds(current?.pendingDeletedReviewIds, envelope.pendingDeletedReviewIds);
   const deletedReviewIds = uniqueReviewIds(current?.deletedReviewIds, current?.pendingDeletedReviewIds, envelope.deletedReviewIds, pendingDeletedReviewIds);
-  const localPersisted = preparedEnvelope({ ...envelope, pendingDeletedReviewIds }, deletedReviewIds, true);
+  const sessionDeletedReviewIds = uniqueReviewIds(current?.sessionDeletedReviewIds, envelope.sessionDeletedReviewIds);
+  const deletedSessionIds = uniqueReviewIds(current?.deletedSessionIds, envelope.deletedSessionIds);
+  const localPersisted = preparedEnvelope({ ...envelope, pendingDeletedReviewIds, sessionDeletedReviewIds, deletedSessionIds }, deletedReviewIds, true);
   localStorage.setItem(localKey(localPersisted.deckId), JSON.stringify(localPersisted));
   if (!supabase || !user) return { cloud: false };
 
