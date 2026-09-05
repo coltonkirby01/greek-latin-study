@@ -48,6 +48,7 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ SQL RLS restricts writes to authenticated `admin_users` members and rejects ordinary-user access by policy inspection.
 - ✅ Production Supabase schema and private `reading-audio` bucket created.
 - ✅ Administrator authorization hardened to self-visible membership rows; Supabase security advisor reports no findings.
+- ✅ RLS identity checks use initialization plans and administrator command policies do not overlap; no actionable RLS performance warnings remain.
 - 🟡 Create/upload/preview/publish/open/study/delete-sample integration test requires the owner's first authenticated administrator account.
 
 ## Accounts and cloud
