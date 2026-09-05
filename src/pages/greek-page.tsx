@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { loadGreekDeck, loadGreekLesson3GrammarDeck, loadGreekLesson3VocabularyDeck } from "../data/builtin-decks";
 import { useAuth } from "../features/auth/auth-context";
 import { MultiSourceStudySession, type StudySourceDefinition } from "../features/study/multi-source-study-session";
@@ -32,7 +32,7 @@ const lesson2Keys = [keys.accents] as const;
 const lesson3GrammarKeys = [keys.presentActiveIndicative, keys.presentActiveInfinitive, keys.presentActiveImperative] as const;
 const lesson3Keys = [keys.lesson3Vocabulary, ...lesson3GrammarKeys] as const;
 const allVocabularyKeys = [keys.lesson3Vocabulary] as const;
-const allGrammarKeys = [keys.accents, ...lesson3GrammarKeys] as const;
+const allGrammarKeys = [...lesson1Keys, ...lesson2Keys, ...lesson3GrammarKeys] as const;
 
 const grammarCategoryByKey = new Map<string, string>([
   [keys.presentActiveIndicative, "Present Active Indicative"],
@@ -61,8 +61,13 @@ export function GreekPage() {
     return { foundation, lesson3Vocabulary, lesson3Grammar };
   }, []);
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [direction, setDirection] = useState<StudyDirection>("forward");
   const [selected, setSelected] = useState<Set<string>>(() => new Set(allKeys));
+  const resumeSession = useMemo(() => {
+    const id = searchParams.get("session"), startedAt = Number(searchParams.get("sessionStartedAt"));
+    return id && Number.isFinite(startedAt) && startedAt > 0 ? { id, startedAt } : null;
+  }, [searchParams]);
 
   const lesson1State = groupState(selected, lesson1Keys);
   const alphabetState = groupState(selected, alphabetKeys);
@@ -89,7 +94,7 @@ export function GreekPage() {
   const sources = useMemo(() => {
     if (!decks) return [];
     const next: StudySourceDefinition[] = [];
-    if (foundationCards.length) next.push({ id: "lessons-1-2", label: "Lessons 1–2", deck: decks.foundation, cards: foundationCards, studyKey: direction, direction });
+    if (foundationCards.length) next.push({ id: "lessons-1-2", label: "Lessons 1–2 grammar", deck: decks.foundation, cards: foundationCards, studyKey: direction, direction });
     if (lesson3VocabularyCards.length) next.push({ id: "lesson3-vocabulary", label: "Lesson 3 vocabulary", deck: decks.lesson3Vocabulary, cards: lesson3VocabularyCards, studyKey: direction, direction });
     if (lesson3GrammarCards.length) next.push({ id: "lesson3-grammar", label: "Lesson 3 grammar", deck: decks.lesson3Grammar, cards: lesson3GrammarCards, studyKey: direction, direction });
     return next;
@@ -100,7 +105,7 @@ export function GreekPage() {
     id: "greek-study-app",
     slug: "greek",
     title: "Greek",
-    eyebrow: "Lessons · vocabulary · grammar",
+    eyebrow: "Grammar · vocabulary",
     description: "One Greek study app combining selected lesson material while preserving each source's progress.",
     language: "greek",
     cards: selectedCards,
@@ -113,8 +118,8 @@ export function GreekPage() {
 
   return <main className="page-shell study-page">
     <div className="study-page-heading">
-      <div><p className="eyebrow">Lessons · vocabulary · grammar</p><h1>Greek</h1></div>
-      <p>Select entire headings without opening them, or open any unchecked heading to choose individual children. Lesson 3 is the current vocabulary source; accent marks and paradigms are grammar.</p>
+      <div><p className="eyebrow">Grammar · vocabulary</p><h1>Greek</h1></div>
+      <p>Select entire headings without opening them, or open any unchecked heading to choose individual children. Alphabet, punctuation, accents, and paradigms are grammar; Lesson 3 is the current vocabulary source.</p>
     </div>
     {!user && <div className="guest-banner"><span>You are studying as a guest. Progress stays on this device.</span><Link to="/account">Sign in to sync</Link></div>}
     {error && <div className="inline-alert">{error}</div>}
@@ -122,12 +127,12 @@ export function GreekPage() {
     {decks && <StudyFilterMenu summary={`${selectedCards.length} cards in the current pool`} detail="A parent checkbox is only a select-all shortcut. You can expand an unchecked heading and select any child independently; changing filters never erases stored progress.">
       <FilterSection title="Quick select" description="Vocabulary and grammar are classified by the course material, not by the visual form of the prompt.">
         <FilterCheckbox label="All Vocabulary" checked={vocabularyState.checked} mixed={vocabularyState.mixed} onChange={(checked) => setSelected((current) => updateSet(current, allVocabularyKeys, checked))} hint="Lesson 3 vocabulary" />
-        <FilterCheckbox label="All Grammar" checked={grammarState.checked} mixed={grammarState.mixed} onChange={(checked) => setSelected((current) => updateSet(current, allGrammarKeys, checked))} hint="Lesson 2 accent marks + Lesson 3 paradigms" />
+        <FilterCheckbox label="All Grammar" checked={grammarState.checked} mixed={grammarState.mixed} onChange={(checked) => setSelected((current) => updateSet(current, allGrammarKeys, checked))} hint="Lesson 1 alphabet + punctuation · Lesson 2 accents · Lesson 3 paradigms" />
       </FilterSection>
 
       <FilterDisclosure
         title="Lesson 1"
-        summary={`${lesson1State.selectedCount} of ${lesson1Keys.length} groups selected`}
+        summary={`Grammar · ${lesson1State.selectedCount} of ${lesson1Keys.length} groups selected`}
         checked={lesson1State.checked}
         mixed={lesson1State.mixed}
         onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson1Keys, checked))}
@@ -141,12 +146,12 @@ export function GreekPage() {
           mixed={alphabetState.mixed}
           onCheckedChange={(checked) => setSelected((current) => updateSet(current, alphabetKeys, checked))}
         >
-          <FilterSection title="Letter case" description="Uppercase and lowercase remain separate cards and can be combined.">
+          <FilterSection title="Letter case" description="Uppercase and lowercase remain separate grammar cards and can be combined.">
             <FilterCheckbox label="Uppercase" count={countFoundation(categories.uppercase)} checked={selected.has(keys.uppercase)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.uppercase], checked))} />
             <FilterCheckbox label="Lowercase" count={countFoundation(categories.lowercase)} checked={selected.has(keys.lowercase)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.lowercase], checked))} />
           </FilterSection>
         </FilterDisclosure>
-        <FilterCheckbox label="Punctuation" count={countFoundation(categories.punctuation)} checked={selected.has(keys.punctuation)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.punctuation], checked))} hint="Lesson 1 punctuation" />
+        <FilterCheckbox label="Punctuation" count={countFoundation(categories.punctuation)} checked={selected.has(keys.punctuation)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.punctuation], checked))} hint="Grammar" />
       </FilterDisclosure>
 
       <FilterDisclosure
@@ -204,6 +209,7 @@ export function GreekPage() {
       direction={direction}
       onDirectionChange={setDirection}
       directionLabels={{ forward: "Forward", reverse: "Reverse" }}
+      resumeSession={resumeSession}
       cardMeta={(card, source) => source.id === "lessons-1-2" ? `Lessons ${Number(card.metadata?.lesson ?? 1)} · Card ${card.rank ?? 0}` : source.id === "lesson3-vocabulary" ? `Lesson 3 vocabulary · ${card.notes ?? ""}` : `Lesson 3 grammar · ${card.category ?? ""}`}
       renderFront={(card, copy, source) => {
         if (source.id === "lesson3-grammar") return source.direction === "forward" ? <span className="study-prompt reverse-text-prompt">{copy.prompt}</span> : <span className="greek-front">{copy.prompt}</span>;
