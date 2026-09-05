@@ -23,6 +23,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   const { user } = useAuth();
   const [envelope, setEnvelope] = useState<DeckProgressEnvelope | null>(null);
   const envelopeRef = useRef<DeckProgressEnvelope | null>(null);
+  const persistQueue = useRef<Promise<void>>(Promise.resolve());
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("adaptive");
   const [revealed, setRevealed] = useState(false), [reviewFront, setReviewFront] = useState(false), [result, setResult] = useState<ReviewResult | null>(null), [difficulty, setDifficulty] = useState<ReviewDifficulty | null>(null);
   const [capturedTimeMs, setCapturedTimeMs] = useState<number | null>(null), [lastTransaction, setLastTransaction] = useState<ReviewTransaction | null>(null), [editingTransaction, setEditingTransaction] = useState<ReviewTransaction | null>(null);
@@ -31,17 +32,33 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   const [session, setSession] = useState<SessionMeta>(makeSession), [warmup, setWarmup] = useState<WarmupMeta | null>(null);
   const lastStudyKey = useRef(studyKey);
 
-  const saveMode = useCallback(async (nextMode: StudyModeState, options?: { review?: ReviewTransaction; deleteReviewId?: string }) => {
+  const saveMode = useCallback((nextMode: StudyModeState, options?: { review?: ReviewTransaction; deleteReviewId?: string }) => {
     const currentEnvelope = envelopeRef.current;
     if (!currentEnvelope) return;
     const nextEnvelope: DeckProgressEnvelope = { ...currentEnvelope, updatedAt: Math.max(Date.now(), nextMode.updatedAt), modes: { ...currentEnvelope.modes, [studyKey]: nextMode } };
     envelopeRef.current = nextEnvelope; setEnvelope(nextEnvelope); setSyncStatus(user ? "syncing" : "local");
-    try { await saveProgressEnvelope(nextEnvelope, user); if (options?.deleteReviewId) await deleteReviewEvent(user, options.deleteReviewId); if (options?.review) { const review = options.review; await upsertReviewEvent(user, { id: review.reviewId, deckId: deck.id, studyKey, cardId: review.cardId, result: review.result, difficulty: review.difficulty, responseTimeMs: review.responseTimeMs, reviewedAt: nextMode.cards[review.cardId]?.history.at(-1)?.reviewedAt ?? Date.now() }); } setSyncStatus(user ? "cloud" : "local"); } catch { setSyncStatus("error"); }
+    persistQueue.current = persistQueue.current.catch(() => undefined).then(async () => {
+      await saveProgressEnvelope(nextEnvelope, user);
+      if (options?.deleteReviewId) await deleteReviewEvent(user, options.deleteReviewId);
+      if (options?.review) {
+        const review = options.review;
+        await upsertReviewEvent(user, { id: review.reviewId, deckId: deck.id, studyKey, cardId: review.cardId, result: review.result, difficulty: review.difficulty, responseTimeMs: review.responseTimeMs, reviewedAt: nextMode.cards[review.cardId]?.history.at(-1)?.reviewedAt ?? Date.now() });
+      }
+      setSyncStatus(user ? "cloud" : "local");
+    }).catch(() => setSyncStatus("error"));
   }, [deck.id, studyKey, user]);
 
   useEffect(() => {
     let active = true; setSyncStatus("loading");
-    void loadProgressEnvelope(deck.id, user).then((loaded) => { if (!active) return; let next = loaded.envelope ?? createEnvelope(deck.id); const existing = next.modes[studyKey] ?? createModeState(deck.id, studyKey, deck.cards.length, deck.staged); const ready = ensureCurrentCard(existing, cards, selectionMode, deck.staged); next = { ...next, updatedAt: Math.max(next.updatedAt, ready.updatedAt), modes: { ...next.modes, [studyKey]: ready } }; envelopeRef.current = next; setEnvelope(next); setSyncStatus(loaded.syncError ? "error" : user ? "cloud" : "local"); void saveProgressEnvelope(next, user).catch(() => setSyncStatus("error")); });
+    void loadProgressEnvelope(deck.id, user).then((loaded) => {
+      if (!active) return;
+      let next = loaded.envelope ?? createEnvelope(deck.id);
+      const existing = next.modes[studyKey] ?? createModeState(deck.id, studyKey, deck.cards.length, deck.staged);
+      const ready = ensureCurrentCard(existing, cards, selectionMode, deck.staged);
+      next = { ...next, updatedAt: Math.max(next.updatedAt, ready.updatedAt), modes: { ...next.modes, [studyKey]: ready } };
+      envelopeRef.current = next; setEnvelope(next); setSyncStatus(loaded.syncError ? "error" : user ? "cloud" : "local");
+      persistQueue.current = persistQueue.current.catch(() => undefined).then(async () => { await saveProgressEnvelope(next, user); }).catch(() => setSyncStatus("error"));
+    });
     return () => { active = false; }; // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deck.id, user?.id]);
 
@@ -50,7 +67,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
     const currentEnvelope = envelopeRef.current;
     if (!currentEnvelope) return; const existing = currentEnvelope.modes[studyKey] ?? createModeState(deck.id, studyKey, deck.cards.length, deck.staged); let ready = existing;
     if (!cards.some((card) => card.id === existing.currentCardId)) { const selected = pickNextCard(cards, existing, selectionMode, { staged: deck.staged }); if (selected) ready = presentCard(existing, selected); }
-    if (ready !== existing || !currentEnvelope.modes[studyKey]) void saveMode(ready);
+    if (ready !== existing || !currentEnvelope.modes[studyKey]) saveMode(ready);
     if (lastStudyKey.current !== studyKey) { lastStudyKey.current = studyKey; setLastTransaction(null); setEditingTransaction(null); setWarmup(null); setRevealed(false); setReviewFront(false); setResult(null); setDifficulty(null); setCapturedTimeMs(null); setStartGateOpen(true); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyKey, cardSignature]);
@@ -64,13 +81,13 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   function resetUi() { setRevealed(false); setReviewFront(false); setBacktracking(false); setResult(null); setDifficulty(null); setCapturedTimeMs(null); setEditingTransaction(null); }
   function reveal() { if (!current || revealed || editingTransaction || startGateOpen) return; setBacktracking(false); setReviewFront(false); setCapturedTimeMs(timer.capture()); setRevealed(true); }
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
-  function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!modeState || !current) return; const selected = warmup ? pickWarmupCard(modeState, current.id) : pickNextCard(cards, modeState, next, { excludeCardId: current.id, staged: deck.staged }); if (selected) { resetUi(); setStartGateOpen(true); void saveMode(presentCard(modeState, selected)); } }
-  function skip() { if (!modeState || editingTransaction) return; resetUi(); const next = warmup ? pickWarmupCard(modeState, current?.id) : null; if (next) void saveMode(presentCard(modeState, next)); else void saveMode(skipAndAdvance(modeState, cards, selectionMode, deck.staged)); }
+  function changeOrder(next: SelectionMode) { setSelectionMode(next); if (!modeState || !current) return; const selected = warmup ? pickWarmupCard(modeState, current.id) : pickNextCard(cards, modeState, next, { excludeCardId: current.id, staged: deck.staged }); if (selected) { resetUi(); setStartGateOpen(true); saveMode(presentCard(modeState, selected)); } }
+  function skip() { if (!modeState || editingTransaction) return; resetUi(); const next = warmup ? pickWarmupCard(modeState, current?.id) : null; if (next) saveMode(presentCard(modeState, next)); else saveMode(skipAndAdvance(modeState, cards, selectionMode, deck.staged)); }
   function startNewSession() {
     if (!modeState) return;
     setWarmup(null); setSession(makeSession()); setLastTransaction(null); resetUi(); setStartGateOpen(true);
     const selected = pickNextCard(cards, modeState, selectionMode, { excludeCardId: current?.id, staged: deck.staged });
-    if (selected) void saveMode(presentCard(modeState, selected));
+    if (selected) saveMode(presentCard(modeState, selected));
     setNotice("New session started. Your long-term mastery and adaptive priorities were preserved.");
   }
   function pickWarmupCard(state: StudyModeState, excludeCardId?: string | null) {
@@ -85,10 +102,10 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   }
   function startWarmup() {
     if (!modeState) return; const meta = { ...makeSession(), remaining: WARMUP_CARDS, total: WARMUP_CARDS }; setWarmup(meta); setLastTransaction(null); resetUi(); setStartGateOpen(false);
-    const selected = pickWarmupCard(modeState, current?.id); if (selected) void saveMode(presentCard(modeState, selected));
+    const selected = pickWarmupCard(modeState, current?.id); if (selected) saveMode(presentCard(modeState, selected));
     setNotice("Personalized warm-up started: five high-priority cards before the ranked session.");
   }
-  function back() { if (!lastTransaction || !modeState) return; const transaction = lastTransaction; setLastTransaction(null); setEditingTransaction(transaction); setResult(transaction.result); setDifficulty(transaction.difficulty); setCapturedTimeMs(transaction.responseTimeMs); setBacktracking(true); setRevealed(false); setReviewFront(false); void saveMode(transaction.beforeState, { deleteReviewId: transaction.reviewId }); requestAnimationFrame(() => requestAnimationFrame(() => setRevealed(true))); setNotice("Previous grade undone. Choose the corrected result and save it."); }
+  function back() { if (!lastTransaction || !modeState) return; const transaction = lastTransaction; setLastTransaction(null); setEditingTransaction(transaction); setResult(transaction.result); setDifficulty(transaction.difficulty); setCapturedTimeMs(transaction.responseTimeMs); setBacktracking(true); setRevealed(false); setReviewFront(false); saveMode(transaction.beforeState, { deleteReviewId: transaction.reviewId }); requestAnimationFrame(() => requestAnimationFrame(() => setRevealed(true))); setNotice("Previous grade undone. Choose the corrected result and save it."); }
   function saveNext() {
     if (!modeState || !current || !result || !difficulty) return;
     const reviewedAt = Date.now(), reviewId = editingTransaction?.reviewId ?? crypto.randomUUID(), source = editingTransaction?.beforeState ?? modeState, responseTimeMs = capturedTimeMs ?? timer.capture();
@@ -105,7 +122,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
       if (warmup.remaining <= 1) {
         const selected = pickNextCard(cards, next, selectionMode, { excludeCardId: current.id, staged: deck.staged });
         if (selected) next = presentCard(next, selected, reviewedAt);
-        void saveMode(next, { review: transaction });
+        saveMode(next, { review: transaction });
         setWarmup(null); setSession(makeSession()); setStartGateOpen(true);
         setNotice("Warm-up complete. Its reviews strengthened long-term memory but are excluded from ranked session scores. Start when ready.");
         return;
@@ -113,7 +130,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
 
       const selected = pickWarmupCard(next, current.id);
       if (selected) next = presentCard(next, selected, reviewedAt);
-      void saveMode(next, { review: transaction });
+      saveMode(next, { review: transaction });
       setWarmup({ ...warmup, remaining: warmup.remaining - 1 });
       setNotice(`Warm-up: ${warmup.remaining - 1} card${warmup.remaining - 1 === 1 ? "" : "s"} remaining.`);
       return;
@@ -125,7 +142,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
       const selected = pickWarmupCard(next, current.id);
       if (selected) next = presentCard(next, selected, reviewedAt);
     }
-    const corrected = Boolean(editingTransaction); setLastTransaction(applied.transaction); resetUi(); void saveMode(next, { review: applied.transaction });
+    const corrected = Boolean(editingTransaction); setLastTransaction(applied.transaction); resetUi(); saveMode(next, { review: applied.transaction });
     setNotice(next.lastUnlock?.at === reviewedAt ? `New cards unlocked: ${next.lastUnlock.start}–${next.lastUnlock.end}.` : corrected ? "Previous grade corrected." : "Progress saved.");
   }
 
