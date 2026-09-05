@@ -76,7 +76,7 @@ export function loadGreekFilterSelection(defaultKeys: readonly string[], storage
 export function saveGreekFilterSelection(selected: ReadonlySet<string>, storage?: StorageLike | null) {
   const target = availableStorage(storage);
   if (!target) return;
-  target.setItem(GREEK_FILTER_KEY, JSON.stringify([...selected]));
+  try { target.setItem(GREEK_FILTER_KEY, JSON.stringify([...selected])); } catch { /* Ignore unavailable browser storage. */ }
 }
 
 export function loadLatinFilterPreferences(storage?: StorageLike | null): LatinFilterPreferences {
@@ -109,10 +109,12 @@ export function loadLatinFilterPreferences(storage?: StorageLike | null): LatinF
 export function saveLatinFilterPreferences(preferences: LatinFilterPreferences, storage?: StorageLike | null) {
   const target = availableStorage(storage);
   if (!target) return;
-  target.setItem(LATIN_FILTER_KEY, JSON.stringify({
-    materials: [...preferences.materials],
-    vocabularyParts: storeOptionalSelection(preferences.vocabularyParts),
-    formFilters: storeGrammarFilters(preferences.formFilters),
-    chartFilters: storeGrammarFilters(preferences.chartFilters),
-  }));
+  try {
+    target.setItem(LATIN_FILTER_KEY, JSON.stringify({
+      materials: [...preferences.materials],
+      vocabularyParts: storeOptionalSelection(preferences.vocabularyParts),
+      formFilters: storeGrammarFilters(preferences.formFilters),
+      chartFilters: storeGrammarFilters(preferences.chartFilters),
+    }));
+  } catch { /* Ignore unavailable browser storage. */ }
 }
