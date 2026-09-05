@@ -66,9 +66,14 @@ export function FilterDisclosure({ title, summary, children, nested = false, che
   </details>;
 }
 
-export function FilterCheckbox({ label, checked, onChange, count, disabled = false, nested = false, hint }: { label: string; checked: boolean; onChange: (checked: boolean) => void; count?: number; disabled?: boolean; nested?: boolean; hint?: string }) {
+export function FilterCheckbox({ label, checked, mixed = false, onChange, count, disabled = false, nested = false, hint }: { label: string; checked: boolean; mixed?: boolean; onChange: (checked: boolean) => void; count?: number; disabled?: boolean; nested?: boolean; hint?: string }) {
+  const checkboxRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (checkboxRef.current) checkboxRef.current.indeterminate = mixed;
+  }, [mixed]);
+
   return <label className={`filter-checkbox ${nested ? "is-nested" : ""} ${disabled ? "is-disabled" : ""}`}>
-    <input type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+    <input ref={checkboxRef} type="checkbox" checked={checked} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
     <span className="filter-checkbox-copy"><strong>{label}</strong>{hint && <small>{hint}</small>}</span>
     {typeof count === "number" && <span className="filter-count">{count.toLocaleString()}</span>}
   </label>;
