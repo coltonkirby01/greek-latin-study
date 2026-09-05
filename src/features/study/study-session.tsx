@@ -5,6 +5,7 @@ import { useAuth } from "../auth/auth-context";
 import { createEnvelope, createModeState, directionalCopy, ensureCurrentCard, formatResponseTime, highestPriorityCards, pickNextCard, presentCard, priorityReason, reviewAndAdvance, skipAndAdvance, studyStats } from "./engine";
 import { deleteReviewEvent, loadProgressEnvelope, saveProgressEnvelope, upsertReviewEvent } from "./progress-repository";
 import "./study-gate.css";
+import { studyShortcut } from "./study-shortcuts";
 import type { DeckDefinition, DeckProgressEnvelope, DirectionalCardCopy, ReviewDifficulty, ReviewResult, ReviewTransaction, SelectionMode, StudyCard, StudyDirection, StudyModeState } from "./types";
 import { useResponseTimer } from "./use-response-timer";
 
@@ -72,11 +73,20 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
-      if (startGateOpen) { event.preventDefault(); setStartGateOpen(false); return; }
-      if (target?.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='listbox']")) return;
-      if (event.key === " " && !revealed) { event.preventDefault(); reveal(); return; }
-      if (!revealed) return;
-      if (event.key === "1") setResult("right"); else if (event.key === "2") setResult("wrong"); else if (event.key === "3") setDifficulty("easy"); else if (event.key === "4") setDifficulty("medium"); else if (event.key === "5") setDifficulty("hard"); else if (event.key === "Enter" && result && difficulty) { event.preventDefault(); saveNext(); }
+      const shortcut = studyShortcut({
+        key: event.key,
+        startGateOpen,
+        revealed,
+        result,
+        difficulty,
+        typingTarget: Boolean(target?.closest("input, textarea, select, [contenteditable='true'], [role='textbox'], [role='listbox']")),
+      });
+      if (!shortcut) return;
+      if (shortcut.type === "start") { event.preventDefault(); setStartGateOpen(false); return; }
+      if (shortcut.type === "reveal") { event.preventDefault(); reveal(); return; }
+      if (shortcut.type === "result") { setResult(shortcut.value); return; }
+      if (shortcut.type === "difficulty") { setDifficulty(shortcut.value); return; }
+      event.preventDefault(); saveNext();
     }
     window.addEventListener("keydown", keydown); return () => window.removeEventListener("keydown", keydown);
   });
