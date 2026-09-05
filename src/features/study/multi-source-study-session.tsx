@@ -25,6 +25,7 @@ type Candidate = { source: StudySourceDefinition; card: StudyCard };
 type MixedReviewTransaction = ReviewTransaction & { sourceId: string; deckId: string; studyKey: string };
 type SyncStatus = "loading" | "local" | "syncing" | "cloud" | "error";
 type SessionMeta = { id: string; startedAt: number };
+type ResumableSession = SessionMeta & { lastReviewedAt: number; reviews: number };
 type WarmupMeta = SessionMeta & { remaining: number; total: number };
 const WARMUP_CARDS = 5;
 const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
@@ -46,6 +47,10 @@ type Props = {
 };
 
 function candidateKey(candidate: Candidate) { return `${candidate.source.id}:${candidate.card.id}`; }
+function sessionLabel(session: ResumableSession) {
+  const when = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(session.startedAt);
+  return `${when} · ${session.reviews} review${session.reviews === 1 ? "" : "s"}`;
+}
 
 function availableCards(source: StudySourceDefinition, state: StudyModeState) {
   if (!source.deck.staged) return source.cards;
@@ -215,6 +220,26 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const stats = useMemo(() => aggregateStats(visibleCandidates, states), [states, visibleCandidates]);
   const priority = useMemo(() => visibleCandidates.map(({ source, card }) => ({ card, progress: getCardProgress(states.get(source.id) ?? modeFor(source), card.id), score: priorityScore(card, states.get(source.id) ?? modeFor(source), { ignoreRecency: true }) })).sort((a, b) => b.score - a.score).slice(0, 5), [modeFor, states, visibleCandidates]);
   const sourceByCard = useMemo(() => new Map(sources.flatMap((source) => source.cards.map((card) => [`${card.deckId}:${card.id}`, source] as const))), [sources]);
+  const resumableSessions = useMemo(() => {
+    const sessions = new Map<string, ResumableSession>();
+    for (const source of sources) {
+      const state = states.get(source.id);
+      if (!state) continue;
+      for (const progress of Object.values(state.cards)) {
+        for (const review of progress.history) {
+          if (!review.sessionId || review.activityKind === "warmup") continue;
+          const startedAt = review.sessionStartedAt ?? review.reviewedAt;
+          const existing = sessions.get(review.sessionId);
+          if (existing) {
+            existing.startedAt = Math.min(existing.startedAt, startedAt);
+            existing.lastReviewedAt = Math.max(existing.lastReviewedAt, review.reviewedAt);
+            existing.reviews += 1;
+          } else sessions.set(review.sessionId, { id: review.sessionId, startedAt, lastReviewedAt: review.reviewedAt, reviews: 1 });
+        }
+      }
+    }
+    return [...sessions.values()].sort((a, b) => b.lastReviewedAt - a.lastReviewedAt).slice(0, 25);
+  }, [sources, states]);
 
   function reveal() { if (!current || revealed || editingTransaction || startGateOpen) return; setBacktracking(false); setReviewFront(false); setCapturedTimeMs(timer.capture()); setRevealed(true); }
   function toggleReviewFace() { if (revealed) setReviewFront((value) => !value); }
@@ -225,6 +250,13 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     if (!url.searchParams.has("session") && !url.searchParams.has("sessionStartedAt")) return;
     url.searchParams.delete("session"); url.searchParams.delete("sessionStartedAt");
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+  function continueSession(id: string) {
+    const previous = resumableSessions.find((item) => item.id === id);
+    if (!previous) return;
+    clearResumeUrl();
+    setWarmup(null); setSession({ id: previous.id, startedAt: previous.startedAt }); setLastTransaction(null); resetUi(); setStartGateOpen(true);
+    setNotice(`Continuing session from ${sessionLabel(previous)}. Adaptive review still uses your full long-term history.`);
   }
   function startNewSession() {
     clearResumeUrl();
@@ -318,6 +350,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const currentMeta = cardMeta?.(current.card, current.source);
   const showingAnswer = revealed && !reviewFront;
   const gated = startGateOpen && !revealed && !editingTransaction;
+  const selectedPastSession = resumableSessions.some((item) => item.id === session.id) ? session.id : "";
 
   return <div className="study-grid" data-testid="study-session" data-study-key={current.source.studyKey}>
     <section className={`study-panel panel-surface ${gated ? "is-gated" : ""}`} aria-label={`${deck.title} study card`}>
@@ -326,6 +359,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
         <div className="toolbar-control-group">
           {onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
+          {resumableSessions.length > 0 && <label className="compact-select-label"><span className="sr-only">Continue past session</span><select value={selectedPastSession} onChange={(event) => event.target.value && continueSession(event.target.value)}><option value="">Continue past session…</option>{resumableSessions.map((item) => <option key={item.id} value={item.id}>{sessionLabel(item)}</option>)}</select></label>}
           <button type="button" className="small-outline-button" onClick={startNewSession} disabled={Boolean(editingTransaction)}>New session</button>
           <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || Boolean(editingTransaction) || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
