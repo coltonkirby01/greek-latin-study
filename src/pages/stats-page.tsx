@@ -1,5 +1,5 @@
 import { BarChart3, Clock3, Cloud, Laptop, TrendingUp } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { loadGreekDeck, loadGreekLesson3GrammarDeck, loadGreekLesson3VocabularyDeck, loadLatinDeck } from "../data/builtin-decks";
 import { useAuth } from "../features/auth/auth-context";
@@ -23,7 +23,7 @@ type StatsSource = {
 
 type SourceSummary = ReturnType<typeof summarizeSource>;
 type CardPerformance = ReturnType<typeof summarizeCard>;
-type RecentReview = {
+type ReviewEvent = {
   language: Language;
   source: string;
   mode: string;
@@ -32,6 +32,26 @@ type RecentReview = {
   result: "right" | "wrong";
   difficulty: "easy" | "medium" | "hard";
   responseTimeMs: number;
+  sessionId?: string;
+  sessionStartedAt?: number;
+};
+type SessionSummary = {
+  id: string;
+  language: Language;
+  startedAt: number;
+  endedAt: number;
+  reviews: number;
+  right: number;
+  wrong: number;
+  easy: number;
+  medium: number;
+  hard: number;
+  totalTimeMs: number;
+  averageTimeMs: number;
+  accuracy: number;
+  score: number;
+  inferred: boolean;
+  changeFromPrevious: number | null;
 };
 
 function percent(value: number | null) {
@@ -143,6 +163,77 @@ function aggregateLanguage(rows: SourceSummary[]) {
   };
 }
 
+function sessionScore(reviews: ReviewEvent[]) {
+  if (!reviews.length) return 0;
+  const accuracy = reviews.filter((review) => review.result === "right").length / reviews.length;
+  const averageTimeMs = reviews.reduce((sum, review) => sum + review.responseTimeMs, 0) / reviews.length;
+  const hardRate = reviews.filter((review) => review.difficulty === "hard").length / reviews.length;
+  const speedScore = Math.max(0, Math.min(1, 4_000 / Math.max(4_000, averageTimeMs)));
+  return Number((accuracy * 75 + speedScore * 20 + (1 - hardRate) * 5).toFixed(1));
+}
+
+function summarizeSession(id: string, language: Language, reviews: ReviewEvent[], inferred: boolean): SessionSummary {
+  const startedAt = Math.min(...reviews.map((review) => review.sessionStartedAt ?? review.reviewedAt));
+  const endedAt = Math.max(...reviews.map((review) => review.reviewedAt));
+  const right = reviews.filter((review) => review.result === "right").length;
+  const easy = reviews.filter((review) => review.difficulty === "easy").length;
+  const medium = reviews.filter((review) => review.difficulty === "medium").length;
+  const hard = reviews.filter((review) => review.difficulty === "hard").length;
+  const totalTimeMs = reviews.reduce((sum, review) => sum + review.responseTimeMs, 0);
+  return {
+    id,
+    language,
+    startedAt,
+    endedAt,
+    reviews: reviews.length,
+    right,
+    wrong: reviews.length - right,
+    easy,
+    medium,
+    hard,
+    totalTimeMs,
+    averageTimeMs: totalTimeMs / reviews.length,
+    accuracy: right / reviews.length,
+    score: sessionScore(reviews),
+    inferred,
+    changeFromPrevious: null,
+  };
+}
+
+function buildSessions(events: ReviewEvent[]) {
+  const sessions: SessionSummary[] = [];
+  for (const language of ["Greek", "Latin"] as Language[]) {
+    const languageEvents = events.filter((event) => event.language === language).sort((a, b) => a.reviewedAt - b.reviewedAt);
+    const explicit = new Map<string, ReviewEvent[]>();
+    const legacy: ReviewEvent[] = [];
+    for (const event of languageEvents) {
+      if (event.sessionId) explicit.set(event.sessionId, [...(explicit.get(event.sessionId) ?? []), event]);
+      else legacy.push(event);
+    }
+    for (const [id, reviews] of explicit) sessions.push(summarizeSession(id, language, reviews, false));
+
+    let inferredIndex = 0;
+    let bucket: ReviewEvent[] = [];
+    for (const event of legacy) {
+      const previous = bucket.at(-1);
+      if (previous && event.reviewedAt - previous.reviewedAt > 30 * 60_000) {
+        sessions.push(summarizeSession(`legacy-${language}-${inferredIndex++}`, language, bucket, true));
+        bucket = [];
+      }
+      bucket.push(event);
+    }
+    if (bucket.length) sessions.push(summarizeSession(`legacy-${language}-${inferredIndex}`, language, bucket, true));
+  }
+
+  for (const language of ["Greek", "Latin"] as Language[]) {
+    const chronological = sessions.filter((session) => session.language === language).sort((a, b) => a.startedAt - b.startedAt);
+    chronological.forEach((session, index) => {
+      session.changeFromPrevious = index ? Number((session.score - chronological[index - 1].score).toFixed(1)) : null;
+    });
+  }
+  return sessions;
+}
+
 function dateTime(value: number) {
   return value ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(value) : "No reviews yet";
 }
@@ -181,9 +272,9 @@ export function StatsPage() {
       return progress?.reviews ? summarizeCard(row.source, card, progress) : null;
     }).filter((item): item is CardPerformance => Boolean(item)));
 
-    const recent: RecentReview[] = [];
+    const events: ReviewEvent[] = [];
     for (const card of cards) {
-      for (const review of card.progress.history) recent.push({
+      for (const review of card.progress.history) events.push({
         language: card.source.language,
         source: card.source.source,
         mode: card.source.mode,
@@ -192,10 +283,12 @@ export function StatsPage() {
         result: review.result,
         difficulty: review.difficulty,
         responseTimeMs: review.responseTimeMs,
+        sessionId: review.sessionId,
+        sessionStartedAt: review.sessionStartedAt,
       });
     }
-    recent.sort((a, b) => b.reviewedAt - a.reviewedAt);
-    return { summaries, cards, recent: recent.slice(0, 30) };
+    events.sort((a, b) => b.reviewedAt - a.reviewedAt);
+    return { summaries, cards, sessions: buildSessions(events), recent: events.slice(0, 30) };
   }, [user?.id]);
 
   if (loading || !value) return <main className="page-shell"><div className="study-loading panel-surface" role="status"><span className="loading-mark">Σ</span><p>Loading your study history…</p></div></main>;
@@ -204,6 +297,8 @@ export function StatsPage() {
   const latinRows = value.summaries.filter((row) => row.source.language === "Latin");
   const greekCards = value.cards.filter((card) => card.source.language === "Greek");
   const latinCards = value.cards.filter((card) => card.source.language === "Latin");
+  const greekSessions = value.sessions.filter((session) => session.language === "Greek");
+  const latinSessions = value.sessions.filter((session) => session.language === "Latin");
 
   return <main className="page-shell stats-page">
     <header className="stats-hero">
@@ -212,8 +307,8 @@ export function StatsPage() {
     </header>
     {error && <div className="inline-alert">{error}</div>}
 
-    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} href="/greek" />
-    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} href="/latin" />
+    <LanguageStats language="Greek" rows={greekRows} cards={greekCards} sessions={greekSessions} href="/greek" />
+    <LanguageStats language="Latin" rows={latinRows} cards={latinCards} sessions={latinSessions} href="/latin" />
 
     <section className="panel-surface stats-recent-section">
       <div className="stats-section-heading"><div><p className="eyebrow">Latest activity</p><h2>Recent reviews</h2></div><Clock3 aria-hidden="true" /></div>
@@ -225,7 +320,7 @@ export function StatsPage() {
   </main>;
 }
 
-function LanguageStats({ language, rows, cards, href }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; href: string }) {
+function LanguageStats({ language, rows, cards, sessions, href }: { language: Language; rows: SourceSummary[]; cards: CardPerformance[]; sessions: SessionSummary[]; href: string }) {
   const [cardLimit, setCardLimit] = useState(100);
   const aggregate = aggregateLanguage(rows);
   const hardest = [...cards].filter((card) => card.progress.reviews >= 2).sort((a, b) => b.hardestScore - a.hardestScore).slice(0, 8);
@@ -233,6 +328,7 @@ function LanguageStats({ language, rows, cards, href }: { language: Language; ro
   const improved = [...cards].filter((card) => (card.improvement ?? 0) > 0).sort((a, b) => (b.improvement ?? 0) - (a.improvement ?? 0)).slice(0, 8);
   const mostReviewed = [...cards].sort((a, b) => b.progress.reviews - a.progress.reviews).slice(0, 8);
   const cardRows = [...cards].sort((a, b) => b.totalTimeMs - a.totalTimeMs);
+  const rankedSessions = [...sessions].sort((a, b) => b.score - a.score || b.reviews - a.reviews);
 
   return <section className="stats-language-section">
     <div className="stats-language-title"><div><p className="eyebrow">{language}</p><h2>{language} memory bank</h2></div><Link className="small-outline-button" to={href}>Open {language}</Link></div>
@@ -241,6 +337,7 @@ function LanguageStats({ language, rows, cards, href }: { language: Language; ro
       <Stat label="Accuracy" value={percent(aggregate.accuracy)} />
       <Stat label="Total active recall time" value={formatDuration(aggregate.totalRecallTimeMs)} />
       <Stat label="Avg. recall time" value={formatResponseTime(aggregate.averageResponseTimeMs)} />
+      <Stat label="Study sessions" value={sessions.length.toLocaleString()} />
       <Stat label="Reviewed card-directions" value={aggregate.reviewed.toLocaleString()} />
       <Stat label="Mastered once" value={aggregate.mastered.toLocaleString()} />
       <Stat label="Ever wrong" value={aggregate.everWrong.toLocaleString()} />
@@ -254,6 +351,14 @@ function LanguageStats({ language, rows, cards, href }: { language: Language; ro
       <RankedCards title="Most improved" subtitle="Compares early vs. recent accuracy, speed, and difficulty" cards={improved} metric={(card) => `+${Math.round(card.improvement ?? 0)} improvement`} icon={<TrendingUp aria-hidden="true" />} />
       <RankedCards title="Slowest recall" subtitle="Highest average active front-side time" cards={slowest} metric={(card) => `${formatResponseTime(card.averageTimeMs)} avg.`} />
       <RankedCards title="Most reviewed" subtitle="Cards receiving the most repetitions" cards={mostReviewed} metric={(card) => `${card.progress.reviews} reviews`} />
+    </div>
+
+    <div className="panel-surface stats-table-wrap">
+      <div className="stats-section-heading"><div><p className="eyebrow">Session analysis</p><h3>Session rankings</h3><p>A session is ranked by accuracy, recall speed, and difficulty ratings. Starting a new session never resets long-term mastery.</p></div><TrendingUp aria-hidden="true" /></div>
+      {rankedSessions.length ? <div className="stats-table-scroll"><table className="stats-table">
+        <thead><tr><th>Rank</th><th>Started</th><th>Reviews</th><th>Accuracy</th><th>Total time</th><th>Avg. time</th><th>Right / Wrong</th><th>Easy / Medium / Hard</th><th>Score</th><th>Vs. previous</th></tr></thead>
+        <tbody>{rankedSessions.map((session, index) => <tr key={session.id}><td>#{index + 1}</td><td>{dateTime(session.startedAt)}{session.inferred ? <span className="stats-legacy-note"> inferred</span> : null}</td><td>{session.reviews}</td><td>{percent(session.accuracy)}</td><td>{formatDuration(session.totalTimeMs)}</td><td>{formatResponseTime(session.averageTimeMs)}</td><td>{session.right} / {session.wrong}</td><td>{session.easy} / {session.medium} / {session.hard}</td><td><strong>{session.score.toFixed(1)}</strong></td><td>{session.changeFromPrevious === null ? "—" : `${session.changeFromPrevious >= 0 ? "+" : ""}${session.changeFromPrevious.toFixed(1)}`}</td></tr>)}</tbody>
+      </table></div> : <p className="stats-empty">Complete reviews to create ranked study sessions.</p>}
     </div>
 
     <div className="panel-surface stats-table-wrap">
@@ -277,7 +382,7 @@ function LanguageStats({ language, rows, cards, href }: { language: Language; ro
   </section>;
 }
 
-function RankedCards({ title, subtitle, cards, metric, icon }: { title: string; subtitle: string; cards: CardPerformance[]; metric: (card: CardPerformance) => string; icon?: React.ReactNode }) {
+function RankedCards({ title, subtitle, cards, metric, icon }: { title: string; subtitle: string; cards: CardPerformance[]; metric: (card: CardPerformance) => string; icon?: ReactNode }) {
   return <section className="panel-surface stats-ranked-panel">
     <div className="stats-ranked-heading"><div><h3>{title}</h3><p>{subtitle}</p></div>{icon}</div>
     {cards.length ? <ol>{cards.map((card) => <li key={`${card.source.source}:${card.source.studyKey}:${card.card.id}`}><div><strong>{card.prompt}</strong><span>{card.source.source} · {card.source.mode}</span></div><em>{metric(card)}</em></li>)}</ol> : <p className="stats-empty">More review history is needed for this analysis.</p>}
