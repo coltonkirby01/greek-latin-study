@@ -111,7 +111,7 @@ export function AccountSessionManager({ user }: { user: User }) {
         const busy = busySessionId === session.id;
         return <article className="account-session-row" key={session.id}>
           <div className="account-session-copy">
-            <span className="account-session-language">{session.language}</span>
+            <span className="eyebrow">{session.language}</span>
             <strong>{currentName}</strong>
             <small>{session.sources.join(" + ")} · {sessionDateFormatter.format(session.startedAt)} · {session.reviews} review{session.reviews === 1 ? "" : "s"}</small>
           </div>
@@ -119,7 +119,7 @@ export function AccountSessionManager({ user }: { user: User }) {
           <div className="account-session-actions">
             <button className="secondary-button" type="button" disabled={busy || !draftName.trim() || draftName.trim() === currentName} onClick={() => void saveName(session)}>{busy ? "Saving…" : "Save name"}</button>
             <Link className="secondary-button" to={continueHref(session)}>Continue</Link>
-            <button className="danger-button" type="button" disabled={busy} onClick={() => void deleteSession(session)}><Trash2 aria-hidden="true" /> Delete</button>
+            <button className="secondary-button account-delete-session" type="button" disabled={busy} onClick={() => void deleteSession(session)}><Trash2 aria-hidden="true" /> Delete</button>
           </div>
         </article>;
       })}
