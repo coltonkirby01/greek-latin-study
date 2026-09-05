@@ -62,6 +62,10 @@ export function mostRecentResumableSession(sessions: readonly ManagedSession[]) 
     .sort((a, b) => b.lastReviewedAt - a.lastReviewedAt || b.startedAt - a.startedAt)[0] ?? null;
 }
 
+export function sessionWasDeleted(envelopes: Record<string, DeckProgressEnvelope | null | undefined>, sessionId: string) {
+  return Object.values(envelopes).some((envelope) => envelope?.deletedSessionIds?.includes(sessionId));
+}
+
 export function currentSessionDisplayName(language: "Greek" | "Latin", sources: readonly string[], customName?: string) {
   const custom = customName?.trim();
   if (custom) return custom;
@@ -147,6 +151,21 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     setSession({ id: latest.id, startedAt: latest.startedAt, name: latest.name });
     setNotice(`Continuing ${sessionLabel(latest)}. Adaptive review still uses your full long-term history.`);
   }, [ready, sessionCatalog]);
+
+  useEffect(() => {
+    if (!ready || !sessionChoiceInitialized.current || !sessionWasDeleted(envelopes, session.id)) return;
+    clearResumeUrl();
+    const latest = mostRecentResumableSession(sessionCatalog);
+    if (latest) {
+      setSession({ id: latest.id, startedAt: latest.startedAt, name: latest.name });
+      setNotice(`The previous session was deleted. Continuing ${sessionLabel(latest)} instead.`);
+      return;
+    }
+    setSession(makeSession());
+    setNotice("The previous session was deleted. A new session will begin with your next saved review.");
+  // clearResumeUrl is stable browser plumbing and intentionally omitted.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envelopes, ready, session.id, sessionCatalog]);
 
   const modeFor = useCallback((source: StudySourceDefinition) => {
     const envelope = envelopesRef.current[source.deck.id];
@@ -358,9 +377,9 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
 
     if (warmup && !editingTransaction) {
       if (warmup.remaining <= 1) {
-        setWarmup(null); setSession(makeSession()); setStartGateOpen(true);
+        setWarmup(null); setStartGateOpen(true);
         const selected = chooseNext(current, selectionMode, false); if (selected) present(selected);
-        setNotice("Warm-up complete. Your five reviews strengthened long-term memory but are excluded from ranked session scores. Start when ready.");
+        setNotice("Warm-up complete. Your five reviews strengthened long-term memory but are excluded from ranked session scores. Continue the current session when ready.");
         return;
       }
       setWarmup({ ...warmup, remaining: warmup.remaining - 1 });
