@@ -92,16 +92,23 @@ describe("session management", () => {
     expect(review?.sessionName).toBe("Old Latin practice");
   });
 
-  it("fully removes a deleted explicit session from stored history without changing adaptive memory", () => {
+  it("removes an explicit session from session data and Stats while preserving adaptive review history", () => {
     const before = envelopeWithTwoSessions();
     const beforeMode = structuredClone(before.modes.forward);
     const beforeProgress = structuredClone(beforeMode.cards.one);
     const mutation = deleteSessionFromEnvelope(before, "session-b", 100);
     const mode = mutation.envelope.modes.forward;
     const progress = mode.cards.one;
+    const deletedReview = progress.history.find((review) => review.id === "r2");
 
     expect(mutation.reviewIds).toEqual(["r2"]);
-    expect(progress.history.map((review) => review.id)).toEqual(["r1"]);
+    expect(progress.history.map((review) => review.id)).toEqual(["r1", "r2"]);
+    expect(deletedReview).toMatchObject({ id: "r2", statsExcluded: true });
+    expect(deletedReview?.sessionId).toBeUndefined();
+    expect(deletedReview?.sessionStartedAt).toBeUndefined();
+    expect(deletedReview?.sessionName).toBeUndefined();
+    expect(mutation.envelope.sessionDeletedReviewIds).toContain("r2");
+    expect(mutation.envelope.deletedSessionIds).toContain("session-b");
     expect(progress.reviews).toBe(beforeProgress.reviews);
     expect(progress.right).toBe(beforeProgress.right);
     expect(progress.wrong).toBe(beforeProgress.wrong);
@@ -112,6 +119,8 @@ describe("session management", () => {
     expect(progress.intervalMs).toBe(beforeProgress.intervalMs);
     expect(progress.dueAt).toBe(beforeProgress.dueAt);
     expect(progress.responseTimeTotalMs).toBe(beforeProgress.responseTimeTotalMs);
+    expect(progress.responseTimeCount).toBe(beforeProgress.responseTimeCount);
+    expect(progress.lastResponseTimeMs).toBe(beforeProgress.lastResponseTimeMs);
     expect(mode.totalReviews).toBe(beforeMode.totalReviews);
     expect(mode.rightReviews).toBe(beforeMode.rightReviews);
     expect(mode.wrongReviews).toBe(beforeMode.wrongReviews);
@@ -120,23 +129,29 @@ describe("session management", () => {
     expect(collectManagedSessions({ "dickinson-latin-core": mutation.envelope }).map((session) => session.id)).toEqual(["session-a"]);
   });
 
-  it("fully removes legacy session reviews without changing adaptive memory", () => {
+  it("removes a legacy session from session data and Stats while preserving its learning review", () => {
     const before = envelopeWithLegacyReview();
     const beforeMode = structuredClone(before.modes.forward);
     const beforeProgress = structuredClone(beforeMode.cards.one);
     const mutation = deleteReviewsFromEnvelope(before, ["legacy-r1"], 100);
     const mode = mutation.envelope.modes.forward;
     const progress = mode.cards.one;
+    const review = progress.history[0];
 
     expect(mutation.changed).toBe(true);
-    expect(progress.history).toEqual([]);
+    expect(progress.history).toHaveLength(1);
+    expect(review).toMatchObject({ id: "legacy-r1", statsExcluded: true });
+    expect(mutation.envelope.sessionDeletedReviewIds).toContain("legacy-r1");
     expect(progress.reviews).toBe(beforeProgress.reviews);
     expect(progress.strength).toBe(beforeProgress.strength);
     expect(progress.intervalMs).toBe(beforeProgress.intervalMs);
     expect(progress.dueAt).toBe(beforeProgress.dueAt);
+    expect(progress.responseTimeTotalMs).toBe(beforeProgress.responseTimeTotalMs);
+    expect(progress.responseTimeCount).toBe(beforeProgress.responseTimeCount);
     expect(mode.totalReviews).toBe(beforeMode.totalReviews);
     expect(mode.reviewSequence).toEqual(beforeMode.reviewSequence);
     expect(mode.unlockedCount).toBe(150);
+    expect(collectManagedSessions({ "dickinson-latin-core": mutation.envelope })).toEqual([]);
   });
 
   it("does not resurrect a deleted session when a newer stale copy wins a mode merge", () => {
@@ -145,12 +160,14 @@ describe("session management", () => {
     stale.updatedAt = 200;
 
     const deleted = deleteSessionFromEnvelope(envelopeWithTwoSessions(), "session-b", 100).envelope;
-    deleted.deletedReviewIds = ["r2"];
-    delete deleted.pendingDeletedReviewIds;
-
     const merged = mergeProgressEnvelopes(stale, deleted);
-    expect(merged?.modes.forward.cards.one.history.map((review) => review.id)).toEqual(["r1"]);
-    expect(merged?.deletedReviewIds).toContain("r2");
+    const review = merged?.modes.forward.cards.one.history.find((item) => item.id === "r2");
+
+    expect(merged?.modes.forward.cards.one.history.map((item) => item.id)).toEqual(["r1", "r2"]);
+    expect(review?.statsExcluded).toBe(true);
+    expect(review?.sessionId).toBeUndefined();
+    expect(merged?.sessionDeletedReviewIds).toContain("r2");
+    expect(merged?.deletedSessionIds).toContain("session-b");
     expect(collectManagedSessions({ "dickinson-latin-core": merged ?? null }).map((session) => session.id)).toEqual(["session-a"]);
   });
 });
