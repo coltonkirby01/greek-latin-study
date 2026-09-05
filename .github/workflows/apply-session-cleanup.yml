@@ -1,0 +1,36 @@
+name: Apply session cleanup patch
+
+on:
+  push:
+    branches:
+      - chatgpt/simplify-session-history
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[session-cleanup]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/simplify-session-history
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Apply patch
+        run: |
+          if [ -f scripts/apply-session-cleanup.mjs ]; then
+            node scripts/apply-session-cleanup.mjs
+          fi
+      - name: Commit patch
+        run: |
+          if git diff --quiet && git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply simplified session history behavior [session-cleanup]"
+          git push origin HEAD:chatgpt/simplify-session-history
