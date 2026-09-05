@@ -1,6 +1,7 @@
 .stats-page {
   display: grid;
   gap: 2rem;
+  color: var(--foreground);
 }
 
 .stats-hero,
@@ -37,17 +38,19 @@
 .stats-section-heading h3,
 .stats-ranked-heading h3 {
   margin: 0;
+  color: var(--foreground);
 }
 
 .stats-section-heading p,
 .stats-ranked-heading p {
   margin: 0.2rem 0 0;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.78rem;
 }
 
 .stats-hero p:last-child {
   max-width: 54rem;
+  color: var(--muted-foreground);
 }
 
 .stats-sync-note {
@@ -55,7 +58,7 @@
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--line);
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.82rem;
   white-space: nowrap;
 }
@@ -92,7 +95,7 @@
 
 .stats-score-main span,
 .stats-score-breakdown span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.76rem;
   font-weight: 700;
 }
@@ -101,11 +104,12 @@
   font-family: var(--font-serif);
   font-size: clamp(2.2rem, 5vw, 3.6rem);
   line-height: 0.95;
+  color: var(--foreground);
 }
 
 .stats-score-main em,
 .stats-score-breakdown em {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.78rem;
   font-style: normal;
   font-weight: 700;
@@ -127,6 +131,7 @@
 .stats-score-breakdown strong {
   font-family: var(--font-serif);
   font-size: 1.35rem;
+  color: var(--foreground);
 }
 
 .stats-language-section {
@@ -149,10 +154,11 @@
   display: grid;
   gap: 0.35rem;
   align-content: center;
+  color: var(--foreground);
 }
 
 .stats-overview-card span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -161,6 +167,7 @@
   font-family: var(--font-serif);
   font-size: clamp(1.15rem, 1.8vw, 1.6rem);
   font-weight: 650;
+  color: var(--foreground);
 }
 
 .stats-analysis-grid {
@@ -172,6 +179,7 @@
 .stats-ranked-panel {
   padding: 1rem;
   min-width: 0;
+  color: var(--foreground);
 }
 
 .stats-ranked-panel ol {
@@ -199,11 +207,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--foreground);
 }
 
 .stats-ranked-panel li span,
 .stats-ranked-panel li em {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.76rem;
   font-style: normal;
 }
@@ -216,6 +225,7 @@
 .stats-table-wrap,
 .stats-recent-section {
   padding: 1.1rem;
+  color: var(--foreground);
 }
 
 .stats-table-scroll {
@@ -228,6 +238,7 @@
   min-width: 1150px;
   border-collapse: collapse;
   font-size: 0.8rem;
+  color: var(--foreground);
 }
 
 .stats-card-table {
@@ -243,11 +254,15 @@
 }
 
 .stats-table th {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   white-space: nowrap;
+}
+
+.stats-table td {
+  color: var(--foreground);
 }
 
 .stats-table td:first-child {
@@ -289,10 +304,11 @@
 
 .stats-recent-row strong {
   overflow-wrap: anywhere;
+  color: var(--foreground);
 }
 
 .stats-recent-row span {
-  color: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.78rem;
 }
 
@@ -313,8 +329,9 @@
   text-transform: capitalize;
 }
 
-.stats-empty {
-  color: var(--muted);
+.stats-empty,
+.stats-legacy-note {
+  color: var(--muted-foreground);
 }
 
 @media (max-width: 1100px) {
