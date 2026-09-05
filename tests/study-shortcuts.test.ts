@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { studyShortcut } from "../src/features/study/study-shortcuts";
 
-const context = { startGateOpen: false, revealed: false, result: null, difficulty: null, typingTarget: false } as const;
+const context = { startGateOpen: false, revealed: false, result: null, difficulty: null, typingTarget: false, controlsTarget: false } as const;
 
 describe("study keyboard shortcuts", () => {
-  it("uses the first key only to start when the gate is open", () => {
+  it("uses the first non-control key only to start when the gate is open", () => {
     expect(studyShortcut({ ...context, key: " ", startGateOpen: true })).toEqual({ type: "start" });
     expect(studyShortcut({ ...context, key: "r", startGateOpen: true, revealed: true })).toEqual({ type: "start" });
+  });
+
+  it("leaves form and toolbar controls usable while the gate is open", () => {
+    expect(studyShortcut({ ...context, key: "ArrowDown", startGateOpen: true, typingTarget: true })).toBeNull();
+    expect(studyShortcut({ ...context, key: " ", startGateOpen: true, controlsTarget: true })).toBeNull();
+    expect(studyShortcut({ ...context, key: "Enter", startGateOpen: true, controlsTarget: true })).toBeNull();
   });
 
   it("does not trigger study shortcuts while typing after the gate is dismissed", () => {
