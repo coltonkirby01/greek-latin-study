@@ -404,36 +404,15 @@
 }
 
 .stats-recent-section {
-  position: relative;
   margin-top: 1.25rem;
-  padding: 1.35rem;
   display: grid;
   gap: 1rem;
-  border-top: 4px solid var(--burgundy);
-  border-color: color-mix(in srgb, var(--burgundy) 36%, var(--line));
-  border-top-color: var(--burgundy);
-  background: color-mix(in srgb, var(--panel) 88%, var(--accent));
-  box-shadow: 0 18px 44px color-mix(in srgb, var(--burgundy) 8%, transparent);
+  border-top: 3px solid var(--burgundy);
 }
 
 .stats-recent-section .stats-section-heading {
-  padding-bottom: 0.95rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--burgundy) 24%, var(--line));
-}
-
-.stats-recent-section .stats-section-heading h2 {
-  font-family: var(--font-serif);
-  font-size: clamp(1.45rem, 2.4vw, 1.9rem);
-}
-
-.stats-recent-section .stats-section-heading > svg {
-  width: 1.35rem;
-  height: 1.35rem;
-  color: var(--burgundy);
-}
-
-.stats-recent-list {
-  display: grid;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .stats-recent-row {
