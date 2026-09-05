@@ -30,7 +30,7 @@ Keep production redirect entries exact. A broad production wildcard is unnecessa
 In the Google Cloud project that will own the sign-in configuration:
 
 1. Open **Google Auth Platform** and configure Branding with the public app name **Greek & Latin Study**, a support email, and a developer contact email.
-2. Choose an **External** audience so ordinary Google accounts can sign in. While the app is in Testing, add the accounts that should be able to test it. Publish the app to Production when it should be available to any Google account.
+2. Choose an **External** audience. This application requests only Google's basic identity scopes (`openid`, email, and profile), so current Google policy allows any Google user to sign in even while the publishing status is Testing; the user may still see a testing notice. For a normal public release, change the publishing status to Production from the Audience page. If sensitive or restricted scopes are added later, complete Google's applicable verification before relying on public access.
 3. Request only the standard identity scopes: `openid`, `userinfo.email`, and `userinfo.profile`.
 4. Create an OAuth client with application type **Web application**.
 5. Add the exact authorized JavaScript origin and authorized redirect URI from the table above. The JavaScript origin must not include `/greeklatinstudy/` or any other path.
@@ -59,4 +59,3 @@ Open the production [Account page](https://coltonkirby01.github.io/greeklatinstu
 ## Administrator access
 
 Google sign-in creates a normal learner account by design. Administrator access is a separate database grant in `public.admin_users`; this prevents every authenticated user from becoming a deck administrator. Grant it only after confirming the exact account UUID in **Authentication → Users**. Row Level Security remains authoritative even if someone visits `/admin` directly.
-
