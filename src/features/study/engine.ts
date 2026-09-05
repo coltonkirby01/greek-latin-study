@@ -50,14 +50,14 @@ function scheduleAfterReview(item: CardProgress, result: ReviewResult, difficult
   item.dueAt = now + item.intervalMs;
 }
 
-export function recordReview(state: StudyModeState, card: StudyCard, review: { id: string; result: ReviewResult; difficulty: ReviewDifficulty; responseTimeMs: number; reviewedAt?: number }) {
+export function recordReview(state: StudyModeState, card: StudyCard, review: { id: string; result: ReviewResult; difficulty: ReviewDifficulty; responseTimeMs: number; reviewedAt?: number; sessionId?: string; sessionStartedAt?: number }) {
   const reviewedAt = review.reviewedAt ?? Date.now(), next = structuredClone(state), item = getCardProgress(next, card.id), responseTimeMs = normalizeResponseTime(review.responseTimeMs);
   item.reviews += 1; item[review.result] += 1; item[review.difficulty] += 1; if (review.result === "right") item.initialMastered = true;
   scheduleAfterReview(item, review.result, review.difficulty, reviewedAt);
   item.responseTimeTotalMs += responseTimeMs; item.responseTimeCount += 1; item.lastResponseTimeMs = responseTimeMs;
   item.intervalMs = Math.max(30_000, item.intervalMs * responseTimeIntervalFactor(responseTimeMs)); item.dueAt = reviewedAt + item.intervalMs;
   item.lastReviewedAt = reviewedAt; item.lastResult = review.result; item.lastDifficulty = review.difficulty;
-  item.history = [...item.history, { id: review.id, reviewedAt, result: review.result, difficulty: review.difficulty, responseTimeMs, intervalMs: Math.round(item.intervalMs), strength: Number(item.strength.toFixed(4)) }].slice(-250);
+  item.history = [...item.history, { id: review.id, reviewedAt, result: review.result, difficulty: review.difficulty, responseTimeMs, intervalMs: Math.round(item.intervalMs), strength: Number(item.strength.toFixed(4)), sessionId: review.sessionId, sessionStartedAt: review.sessionStartedAt }].slice(-250);
   next.cards[card.id] = item; next.totalReviews += 1; if (review.result === "right") next.rightReviews += 1; else next.wrongReviews += 1; next.updatedAt = reviewedAt; return next;
 }
 
@@ -72,11 +72,11 @@ export function ensureCurrentCard(state: StudyModeState, cards: StudyCard[], sel
   const card = pickNextCard(cards, state, selectionMode, { staged }); return card ? presentCard(state, card) : state;
 }
 
-export function reviewAndAdvance(state: StudyModeState, cards: StudyCard[], selectionMode: SelectionMode, review: { id?: string; result: ReviewResult; difficulty: ReviewDifficulty; responseTimeMs: number; reviewedAt?: number }, staged?: StagedIntroduction) {
+export function reviewAndAdvance(state: StudyModeState, cards: StudyCard[], selectionMode: SelectionMode, review: { id?: string; result: ReviewResult; difficulty: ReviewDifficulty; responseTimeMs: number; reviewedAt?: number; sessionId?: string; sessionStartedAt?: number }, staged?: StagedIntroduction) {
   const current = cards.find((card) => card.id === state.currentCardId); if (!current) throw new Error("The active card could not be found.");
   const reviewId = review.id ?? crypto.randomUUID(), beforeState = structuredClone(state); let next = recordReview(state, current, { ...review, id: reviewId });
   next = maybeUnlockNextBatch(next, cards, staged, review.reviewedAt); const chosen = pickNextCard(cards, next, selectionMode, { excludeCardId: current.id, staged }); if (chosen) next = presentCard(next, chosen, review.reviewedAt);
-  const transaction: ReviewTransaction = { reviewId, cardId: current.id, result: review.result, difficulty: review.difficulty, responseTimeMs: normalizeResponseTime(review.responseTimeMs), beforeState }; return { state: next, transaction };
+  const transaction: ReviewTransaction = { reviewId, cardId: current.id, result: review.result, difficulty: review.difficulty, responseTimeMs: normalizeResponseTime(review.responseTimeMs), beforeState, sessionId: review.sessionId, sessionStartedAt: review.sessionStartedAt }; return { state: next, transaction };
 }
 
 export function skipAndAdvance(state: StudyModeState, cards: StudyCard[], selectionMode: SelectionMode, staged?: StagedIntroduction) { const chosen = pickNextCard(cards, state, selectionMode, { excludeCardId: state.currentCardId ?? undefined, staged }); return chosen ? presentCard(state, chosen) : state; }
