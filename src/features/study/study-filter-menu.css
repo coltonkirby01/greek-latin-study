@@ -42,7 +42,8 @@
   background: var(--panel-2);
 }
 
-.filter-section-heading {
+.filter-section-heading,
+.filter-subsection-heading {
   margin-bottom: 0.65rem;
   display: flex;
   gap: 0.75rem;
@@ -83,6 +84,7 @@
 .filter-count { color: var(--ink-soft); font-size: 0.7rem; font-variant-numeric: tabular-nums; }
 
 .filter-subsection-stack { display: grid; gap: 0.65rem; }
+.filter-subsection-heading { margin-bottom: 0.35rem; align-items: center; }
 .filter-subsection-label { margin: 0.15rem 0 0; color: var(--ink-soft); font-size: 0.7rem; font-weight: 850; letter-spacing: 0.08em; text-transform: uppercase; }
 
 @media (max-width: 720px) {
