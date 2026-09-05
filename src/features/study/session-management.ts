@@ -90,49 +90,68 @@ export function displayManagedSessionName(session: ManagedSession) {
   return session.name?.trim() || automaticManagedSessionName(session);
 }
 
-export function renameSessionInEnvelope(envelope: DeckProgressEnvelope, sessionId: string, name: string, now = Date.now()): SessionMutation {
+function mutateReviewsInEnvelope(
+  envelope: DeckProgressEnvelope,
+  matches: (review: ReviewRecord) => boolean,
+  mutate: (review: ReviewRecord) => ReviewRecord,
+  now: number,
+): SessionMutation {
   const next = structuredClone(envelope);
   let changed = false;
   const reviewIds: string[] = [];
+
   for (const mode of Object.values(next.modes)) {
     let modeChanged = false;
     for (const progress of Object.values(mode.cards)) {
       progress.history = progress.history.map((review) => {
-        if (review.sessionId !== sessionId || review.activityKind === "warmup") return review;
+        if (!matches(review)) return review;
         changed = true;
         modeChanged = true;
         reviewIds.push(review.id);
-        return { ...review, sessionName: name };
+        return mutate(review);
       });
     }
     if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
   }
+
   if (changed) next.updatedAt = Math.max(next.updatedAt, now);
-  return { envelope: next, changed, reviewIds };
+  return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
+}
+
+export function renameSessionInEnvelope(envelope: DeckProgressEnvelope, sessionId: string, name: string, now = Date.now()): SessionMutation {
+  return mutateReviewsInEnvelope(
+    envelope,
+    (review) => review.sessionId === sessionId && review.activityKind !== "warmup",
+    (review) => ({ ...review, sessionName: name }),
+    now,
+  );
+}
+
+export function renameReviewsInEnvelope(envelope: DeckProgressEnvelope, reviewIds: readonly string[], name: string, now = Date.now()): SessionMutation {
+  const ids = new Set(reviewIds);
+  return mutateReviewsInEnvelope(
+    envelope,
+    (review) => ids.has(review.id) && review.activityKind !== "warmup" && !review.statsExcluded,
+    (review) => ({ ...review, sessionName: name }),
+    now,
+  );
 }
 
 export function deleteSessionFromEnvelope(envelope: DeckProgressEnvelope, sessionId: string, now = Date.now()): SessionMutation {
-  const next = structuredClone(envelope);
-  let changed = false;
-  const reviewIds: string[] = [];
+  return mutateReviewsInEnvelope(
+    envelope,
+    (review) => review.sessionId === sessionId && review.activityKind !== "warmup" && !review.statsExcluded,
+    (review) => ({ ...review, statsExcluded: true }),
+    now,
+  );
+}
 
-  for (const mode of Object.values(next.modes)) {
-    let modeChanged = false;
-    for (const progress of Object.values(mode.cards)) {
-      progress.history = progress.history.map((review) => {
-        if (review.sessionId !== sessionId || review.activityKind === "warmup" || review.statsExcluded) return review;
-        changed = true;
-        modeChanged = true;
-        reviewIds.push(review.id);
-        return { ...review, statsExcluded: true };
-      });
-    }
-    if (modeChanged) mode.updatedAt = Math.max(mode.updatedAt, now);
-  }
-
-  // Card counters, strength, intervals, due dates, response-time memory, review
-  // sequence, mastery, and staged unlocks are intentionally untouched. The
-  // session disappears from history/Stats but remains part of adaptive memory.
-  if (changed) next.updatedAt = Math.max(next.updatedAt, now);
-  return { envelope: next, changed, reviewIds: [...new Set(reviewIds)] };
+export function deleteReviewsFromStatsInEnvelope(envelope: DeckProgressEnvelope, reviewIds: readonly string[], now = Date.now()): SessionMutation {
+  const ids = new Set(reviewIds);
+  return mutateReviewsInEnvelope(
+    envelope,
+    (review) => ids.has(review.id) && review.activityKind !== "warmup" && !review.statsExcluded,
+    (review) => ({ ...review, statsExcluded: true }),
+    now,
+  );
 }

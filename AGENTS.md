@@ -69,6 +69,7 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Sessions without custom names receive useful automatic names based on language, source/focus, and date/time rather than opaque IDs or purely generic labels.
 - Users can deliberately continue a past ranked session. Continuing reuses that session's original ID, start time, and custom name when present, while card selection still uses the user's current long-term mastery, due state, speed, accuracy, and adaptive priorities.
 - Both Greek and Latin study toolbars expose one compact Session dropdown in the control position previously used by the standalone New session button. That menu lets the user keep the current session, start a new session, or select a resumable past session.
+- Toolbar select controls (including Adaptive/Sequential and Session) use a clean, fully visible dropdown indicator with enough right-side padding; never let the arrow crowd or clip against the rounded edge.
 - Do not reintroduce a separate New session button beside the Session dropdown unless explicitly requested; starting a new session belongs in that menu.
 - The Stats session table also provides an explicit Continue action for resumable non-legacy sessions, so users can resume either from Stats or directly inside Greek/Latin.
 - A resumed session can use the user's current filter selection; resuming must not restore or overwrite old filter state unless explicitly requested.
@@ -133,9 +134,11 @@ Preserve existing study behavior unless the requested change explicitly modifies
 - Stats rank explicit study sessions. Legacy history without explicit session IDs may be grouped into inferred sessions without altering stored data.
 - The Stats page provides a multi-select session scope. Users can view all sessions, one session, or any selected combination; the proficiency summaries, card analysis, recent reviews, and trend views must follow the selected scope.
 - Session management belongs directly inside Stats > Choose sessions; do not add a separate session-management card/panel. Double-click an explicit session name there for Finder/Explorer-style inline renaming, and keep Delete in the same row.
+- Legacy/inferred session buckets created from pre-session-ID review history must also be renameable and deletable from Stats > Choose sessions. Their storage origin (local or cloud) must not make them unmanageable.
 - Deleting a session removes it from Stats/session history only. Its reviews remain part of continuous study memory and MUST NOT change card mastery, strength, intervals, due dates, adaptive priority inputs, response-time memory, review sequence, or Dickinson unlock progress. The visible Stats/proficiency calculations should be recomputed from the sessions that remain.
 - Explicit resumable sessions retain Continue actions in the session rankings. Custom session names persist with review history and survive reload/login synchronization.
 - Stats include lightweight trend graphs for session score and active recall time over time. Avoid large charting dependencies when simple native/SVG rendering is sufficient.
+- Recent Reviews is a combined Greek + Latin activity feed, visually separated from both language-specific Stats sections.
 - Intrinsic card difficulty is separate from the user's Easy/Medium/Hard rating.
 - Greek intrinsic difficulty rises with lesson progression; grammar may add complexity. Later lessons should generally be worth more than earlier lessons.
 - Dickinson vocabulary intrinsic difficulty rises with frequency rank/rarity. Rarer words should generally be worth more than very common words.

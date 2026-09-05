@@ -111,23 +111,9 @@
   background: var(--surface);
 }
 
-.stats-session-choice label {
-  min-width: 0;
-  display: flex;
-  gap: 0.65rem;
-  align-items: flex-start;
-  cursor: pointer;
-}
-
 .stats-session-choice input {
   margin-top: 0.2rem;
   flex: 0 0 auto;
-}
-
-.stats-session-choice label span {
-  min-width: 0;
-  display: grid;
-  gap: 0.14rem;
 }
 
 .stats-session-choice strong {
@@ -216,7 +202,6 @@
 .stats-trend-panel {
   min-width: 0;
   padding: 1rem;
-  color: var(--foreground);
 }
 
 .stats-trend-heading strong {
@@ -275,7 +260,6 @@
   display: grid;
   gap: 0.35rem;
   align-content: center;
-  color: var(--foreground);
 }
 
 .stats-overview-card span {
@@ -300,7 +284,6 @@
 .stats-ranked-panel {
   padding: 1rem;
   min-width: 0;
-  color: var(--foreground);
 }
 
 .stats-ranked-panel ol {
@@ -346,7 +329,6 @@
 .stats-table-wrap,
 .stats-recent-section {
   padding: 1.1rem;
-  color: var(--foreground);
 }
 
 .stats-table-scroll {
@@ -359,7 +341,6 @@
   min-width: 1150px;
   border-collapse: collapse;
   font-size: 0.8rem;
-  color: var(--foreground);
 }
 
 .stats-session-table {
@@ -386,10 +367,6 @@
   white-space: nowrap;
 }
 
-.stats-table td {
-  color: var(--foreground);
-}
-
 .stats-table td:first-child {
   font-weight: 750;
 }
@@ -404,21 +381,15 @@
 }
 
 .stats-recent-section {
+  margin-top: 1.5rem;
   display: grid;
   gap: 1rem;
-}
-
-.stats-recent-list {
-  display: grid;
+  border-top: 3px solid var(--burgundy);
 }
 
 .stats-recent-row {
   padding: 0.75rem 0;
   border-top: 1px solid var(--line);
-}
-
-.stats-recent-row:first-child {
-  border-top: 0;
 }
 
 .stats-recent-row > div:first-child {
@@ -454,8 +425,7 @@
   text-transform: capitalize;
 }
 
-.stats-empty,
-.stats-legacy-note {
+.stats-empty {
   color: var(--muted-foreground);
 }
 
