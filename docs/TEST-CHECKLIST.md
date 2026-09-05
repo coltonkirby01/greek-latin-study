@@ -95,8 +95,9 @@ Legend: ✅ passed; 🟡 implemented, external configuration/integration test pe
 - ✅ Local-first sparse progress and per-mode cloud merge are covered by tests.
 - ✅ Admin protection exists in both UI and RLS.
 - ✅ Production frontend is connected with the project's modern browser-safe publishable key.
-- 🟡 Account creation, email delivery, session persistence, cross-session/device sync, and password reset require the owner's live account verification.
-- 🟡 Google login requires owner-provided Google OAuth configuration if not already completed in Supabase/Google.
+- ✅ Production Supabase contains one confirmed email/password account with a recorded sign-in (verified without exposing its identity on 2026-09-05).
+- 🟡 Session persistence, cross-session/device sync, and password reset still require the owner's live browser verification.
+- 🔴 Google login is wired in the application but the Supabase Google provider remains disabled pending the owner-created Google OAuth Client ID and secret. Exact settings are in `docs/AUTH-SETUP.md`.
 
 ## Reading & Audio
 

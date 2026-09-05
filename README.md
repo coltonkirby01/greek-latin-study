@@ -136,6 +136,8 @@ Every private row policy compares `user_id` to `(select auth.uid())`, allowing P
 
 Email/password signup, secure Supabase sessions, logout, and password recovery are implemented. Passwords are handled by Supabase Auth and are never stored by this application. Google OAuth is wired but must be explicitly enabled in the Supabase Authentication provider settings with Google client credentials and the callback URL Supabase displays. Until configured, the Google button returns the provider error rather than pretending to work.
 
+For this production project's exact Supabase redirects, Google origin/callback values, provider steps, and verification checklist, see [`docs/AUTH-SETUP.md`](docs/AUTH-SETUP.md).
+
 ### Guest migration and backup
 
 Guest state is always kept locally first. On sign-in, each local and cloud mode is reconciled independently by its update time, then saved back to the account. Saved guest readings are also uploaded to the signed-in account. The Account page exports v2 JSON backups and imports both v2 backups and the original Henle v4 backup format. Browser same-origin rules prevent a new GitHub domain from directly reading the original Site's localStorage, so migration is explicit instead of silently discarding or covertly reaching across origins.
@@ -171,7 +173,7 @@ The Edge Function remains inactive until an owner-approved provider is selected.
 
 ## Deployment
 
-The `pages.yml` workflow runs tests and a production build for every pull request. A push to `main` additionally uploads `dist` and deploys GitHub Pages. `build:pages` sets the correct `/greek-latin-study/` base path, and the post-build script creates `404.html` so direct client routes work on Pages.
+The `pages.yml` workflow runs tests and a production build for every pull request. A push to `main` additionally uploads `dist` and deploys GitHub Pages. During GitHub Actions, Vite derives the correct `/greeklatinstudy/` base path from `GITHUB_REPOSITORY`; the post-build script creates `404.html` so direct client routes work on Pages.
 
 The repository originally used legacy branch publishing. Until the owner changes **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, the compiled deploy job waits for that legacy job to finish and then replaces its output. Branch-specific concurrency labels keep pull-request checks from cancelling the live `main` deployment. Once the source is set to GitHub Actions, the same workflow continues normally and the legacy wait exits immediately.
 
