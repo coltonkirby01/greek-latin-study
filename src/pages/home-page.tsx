@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { homeCourses, type CourseId } from "../config/site";
 import { useAuth } from "../features/auth/auth-context";
+import "./home-page.css";
 
 const courseVisuals: Record<CourseId, ReactNode> = {
   greek: <span className="course-glyph course-glyph-word greek-course-title">Ἑλληνικά</span>,
