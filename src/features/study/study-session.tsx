@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/auth-context";
-import { cardsAvailableToState, createEnvelope, createModeState, directionalCopy, ensureCurrentCard, formatResponseTime, highestPriorityCards, pickNextCard, presentCard, priorityScore, reviewAndAdvance, skipAndAdvance, studyStats } from "./engine";
+import { cardsAvailableToState, createEnvelope, createModeState, directionalCopy, ensureCurrentCard, formatResponseTime, highestPriorityCards, maybeUnlockNextBatch, pickNextCard, presentCard, priorityScore, recordReview, reviewAndAdvance, skipAndAdvance, studyStats } from "./engine";
 import { deleteReviewEvent, loadProgressEnvelope, saveProgressEnvelope, upsertReviewEvent } from "./progress-repository";
 import { intrinsicCardDifficulty } from "./scoring";
 import "./study-gate.css";
@@ -90,17 +90,43 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
   }
   function back() { if (!lastTransaction || !modeState) return; const transaction = lastTransaction; setLastTransaction(null); setEditingTransaction(transaction); setResult(transaction.result); setDifficulty(transaction.difficulty); setCapturedTimeMs(transaction.responseTimeMs); setBacktracking(true); setRevealed(false); setReviewFront(false); void saveMode(transaction.beforeState, { deleteReviewId: transaction.reviewId }); requestAnimationFrame(() => requestAnimationFrame(() => setRevealed(true))); setNotice("Previous grade undone. Choose the corrected result and save it."); }
   function saveNext() {
-    if (!modeState || !current || !result || !difficulty) return; const reviewedAt = Date.now(), reviewId = editingTransaction?.reviewId, source = editingTransaction?.beforeState ?? modeState;
+    if (!modeState || !current || !result || !difficulty) return;
+    const reviewedAt = Date.now(), reviewId = editingTransaction?.reviewId ?? crypto.randomUUID(), source = editingTransaction?.beforeState ?? modeState, responseTimeMs = capturedTimeMs ?? timer.capture();
     const activityKind: StudyActivityKind = editingTransaction?.activityKind ?? (warmup ? "warmup" : "study"), activeMeta = activityKind === "warmup" && warmup ? warmup : session;
     const sessionId = editingTransaction?.sessionId ?? activeMeta.id, sessionStartedAt = editingTransaction?.sessionStartedAt ?? activeMeta.startedAt;
-    const applied = reviewAndAdvance(source, cards, warmup ? "adaptive" : selectionMode, { id: reviewId, result, difficulty, responseTimeMs: capturedTimeMs ?? timer.capture(), reviewedAt, sessionId, sessionStartedAt, activityKind }, deck.staged);
-    const corrected = Boolean(editingTransaction); setLastTransaction(applied.transaction); resetUi(); void saveMode(applied.state, { review: applied.transaction });
+
     if (warmup && !editingTransaction) {
-      if (warmup.remaining <= 1) { setWarmup(null); setSession(makeSession()); setStartGateOpen(true); setNotice("Warm-up complete. Its reviews strengthened long-term memory but are excluded from ranked session scores. Start when ready."); }
-      else { setWarmup({ ...warmup, remaining: warmup.remaining - 1 }); setNotice(`Warm-up: ${warmup.remaining - 1} card${warmup.remaining - 1 === 1 ? "" : "s"} remaining.`); }
+      const beforeState = structuredClone(source);
+      let next = recordReview(source, current, { id: reviewId, result, difficulty, responseTimeMs, reviewedAt, sessionId, sessionStartedAt, activityKind: "warmup" });
+      next = maybeUnlockNextBatch(next, cards, deck.staged, reviewedAt);
+      const transaction: ReviewTransaction = { reviewId, cardId: current.id, result, difficulty, responseTimeMs, beforeState, sessionId, sessionStartedAt, activityKind: "warmup" };
+      setLastTransaction(transaction); resetUi();
+
+      if (warmup.remaining <= 1) {
+        const selected = pickNextCard(cards, next, selectionMode, { excludeCardId: current.id, staged: deck.staged });
+        if (selected) next = presentCard(next, selected, reviewedAt);
+        void saveMode(next, { review: transaction });
+        setWarmup(null); setSession(makeSession()); setStartGateOpen(true);
+        setNotice("Warm-up complete. Its reviews strengthened long-term memory but are excluded from ranked session scores. Start when ready.");
+        return;
+      }
+
+      const selected = pickWarmupCard(next, current.id);
+      if (selected) next = presentCard(next, selected, reviewedAt);
+      void saveMode(next, { review: transaction });
+      setWarmup({ ...warmup, remaining: warmup.remaining - 1 });
+      setNotice(`Warm-up: ${warmup.remaining - 1} card${warmup.remaining - 1 === 1 ? "" : "s"} remaining.`);
       return;
     }
-    setNotice(applied.state.lastUnlock?.at === reviewedAt ? `New cards unlocked: ${applied.state.lastUnlock.start}–${applied.state.lastUnlock.end}.` : corrected ? "Previous grade corrected." : "Progress saved.");
+
+    const applied = reviewAndAdvance(source, cards, selectionMode, { id: reviewId, result, difficulty, responseTimeMs, reviewedAt, sessionId, sessionStartedAt, activityKind }, deck.staged);
+    let next = applied.state;
+    if (editingTransaction?.activityKind === "warmup" && warmup) {
+      const selected = pickWarmupCard(next, current.id);
+      if (selected) next = presentCard(next, selected, reviewedAt);
+    }
+    const corrected = Boolean(editingTransaction); setLastTransaction(applied.transaction); resetUi(); void saveMode(next, { review: applied.transaction });
+    setNotice(next.lastUnlock?.at === reviewedAt ? `New cards unlocked: ${next.lastUnlock.start}–${next.lastUnlock.end}.` : corrected ? "Previous grade corrected." : "Progress saved.");
   }
 
   useEffect(() => {
@@ -136,7 +162,7 @@ export function StudySession({ deck, cards = deck.cards, studyKey, direction, on
           {deck.supportsReverse && onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
           <button type="button" className="small-outline-button" onClick={startNewSession} disabled={Boolean(editingTransaction)}>New session</button>
-          <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || editingTransaction || startGateOpen}>Pause timer</button>
+          <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || Boolean(editingTransaction) || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
           {toolbarExtra}
         </div>
