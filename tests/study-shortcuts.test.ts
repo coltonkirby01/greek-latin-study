@@ -6,7 +6,7 @@ const context = { startGateOpen: false, revealed: false, result: null, difficult
 describe("study keyboard shortcuts", () => {
   it("uses the first key only to start when the gate is open", () => {
     expect(studyShortcut({ ...context, key: " ", startGateOpen: true })).toEqual({ type: "start" });
-    expect(studyShortcut({ ...context, key: "1", startGateOpen: true, revealed: true })).toEqual({ type: "start" });
+    expect(studyShortcut({ ...context, key: "r", startGateOpen: true, revealed: true })).toEqual({ type: "start" });
   });
 
   it("does not trigger study shortcuts while typing after the gate is dismissed", () => {
@@ -18,10 +18,14 @@ describe("study keyboard shortcuts", () => {
     expect(studyShortcut({ ...context, key: " ", revealed: true })).toBeNull();
   });
 
-  it("maps grading keys only after reveal", () => {
-    expect(studyShortcut({ ...context, key: "1" })).toBeNull();
-    expect(studyShortcut({ ...context, key: "1", revealed: true })).toEqual({ type: "result", value: "right" });
-    expect(studyShortcut({ ...context, key: "5", revealed: true })).toEqual({ type: "difficulty", value: "hard" });
+  it("maps R/W to correctness and 1/2/3 to difficulty only after reveal", () => {
+    expect(studyShortcut({ ...context, key: "r" })).toBeNull();
+    expect(studyShortcut({ ...context, key: "r", revealed: true })).toEqual({ type: "result", value: "right" });
+    expect(studyShortcut({ ...context, key: "R", revealed: true })).toEqual({ type: "result", value: "right" });
+    expect(studyShortcut({ ...context, key: "w", revealed: true })).toEqual({ type: "result", value: "wrong" });
+    expect(studyShortcut({ ...context, key: "1", revealed: true })).toEqual({ type: "difficulty", value: "easy" });
+    expect(studyShortcut({ ...context, key: "2", revealed: true })).toEqual({ type: "difficulty", value: "medium" });
+    expect(studyShortcut({ ...context, key: "3", revealed: true })).toEqual({ type: "difficulty", value: "hard" });
   });
 
   it("saves with Enter only when both grading inputs are complete", () => {
