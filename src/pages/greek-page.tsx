@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { loadGreekDeck, loadGreekLesson3GrammarDeck, loadGreekLesson3VocabularyDeck } from "../data/builtin-decks";
 import { useAuth } from "../features/auth/auth-context";
+import { loadGreekFilterSelection, saveGreekFilterSelection } from "../features/study/filter-preferences";
 import { MultiSourceStudySession, type StudySourceDefinition } from "../features/study/multi-source-study-session";
 import { FilterCheckbox, FilterDisclosure, FilterSection, StudyFilterMenu } from "../features/study/study-filter-menu";
 import type { DeckDefinition, StudyDirection } from "../features/study/types";
@@ -63,11 +64,13 @@ export function GreekPage() {
   const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const [direction, setDirection] = useState<StudyDirection>("forward");
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(allKeys));
+  const [selected, setSelected] = useState<Set<string>>(() => loadGreekFilterSelection(allKeys));
   const resumeSession = useMemo(() => {
     const id = searchParams.get("session"), startedAt = Number(searchParams.get("sessionStartedAt"));
     return id && Number.isFinite(startedAt) && startedAt > 0 ? { id, startedAt } : null;
   }, [searchParams]);
+
+  useEffect(() => { saveGreekFilterSelection(selected); }, [selected]);
 
   const lesson1State = groupState(selected, lesson1Keys);
   const alphabetState = groupState(selected, alphabetKeys);
@@ -130,22 +133,8 @@ export function GreekPage() {
         <FilterCheckbox label="All Grammar" checked={grammarState.checked} mixed={grammarState.mixed} onChange={(checked) => setSelected((current) => updateSet(current, allGrammarKeys, checked))} hint="Lesson 1 alphabet + punctuation · Lesson 2 accents · Lesson 3 paradigms" />
       </FilterSection>
 
-      <FilterDisclosure
-        title="Lesson 1"
-        summary={`Grammar · ${lesson1State.selectedCount} of ${lesson1Keys.length} groups selected`}
-        checked={lesson1State.checked}
-        mixed={lesson1State.mixed}
-        onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson1Keys, checked))}
-      >
-        <FilterDisclosure
-          title="Alphabet"
-          summary={`${alphabetState.selectedCount} of ${alphabetKeys.length} cases selected`}
-          count={countFoundation(categories.uppercase) + countFoundation(categories.lowercase)}
-          nested
-          checked={alphabetState.checked}
-          mixed={alphabetState.mixed}
-          onCheckedChange={(checked) => setSelected((current) => updateSet(current, alphabetKeys, checked))}
-        >
+      <FilterDisclosure title="Lesson 1" summary={`Grammar · ${lesson1State.selectedCount} of ${lesson1Keys.length} groups selected`} checked={lesson1State.checked} mixed={lesson1State.mixed} onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson1Keys, checked))}>
+        <FilterDisclosure title="Alphabet" summary={`${alphabetState.selectedCount} of ${alphabetKeys.length} cases selected`} count={countFoundation(categories.uppercase) + countFoundation(categories.lowercase)} nested checked={alphabetState.checked} mixed={alphabetState.mixed} onCheckedChange={(checked) => setSelected((current) => updateSet(current, alphabetKeys, checked))}>
           <FilterSection title="Letter case" description="Uppercase and lowercase remain separate grammar cards and can be combined.">
             <FilterCheckbox label="Uppercase" count={countFoundation(categories.uppercase)} checked={selected.has(keys.uppercase)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.uppercase], checked))} />
             <FilterCheckbox label="Lowercase" count={countFoundation(categories.lowercase)} checked={selected.has(keys.lowercase)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.lowercase], checked))} />
@@ -154,45 +143,18 @@ export function GreekPage() {
         <FilterCheckbox label="Punctuation" count={countFoundation(categories.punctuation)} checked={selected.has(keys.punctuation)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.punctuation], checked))} hint="Grammar" />
       </FilterDisclosure>
 
-      <FilterDisclosure
-        title="Lesson 2"
-        summary="Grammar · accent marks"
-        checked={lesson2State.checked}
-        mixed={lesson2State.mixed}
-        onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson2Keys, checked))}
-      >
+      <FilterDisclosure title="Lesson 2" summary="Grammar · accent marks" checked={lesson2State.checked} mixed={lesson2State.mixed} onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson2Keys, checked))}>
         <FilterCheckbox label="Accent marks" count={countFoundation(categories.accents)} checked={selected.has(keys.accents)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.accents], checked))} hint="Grammar" />
       </FilterDisclosure>
 
-      <FilterDisclosure
-        title="Lesson 3"
-        summary={`${lesson3State.selectedCount} of ${lesson3Keys.length} groups selected`}
-        checked={lesson3State.checked}
-        mixed={lesson3State.mixed}
-        onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson3Keys, checked))}
-      >
-        <FilterDisclosure
-          title="Vocabulary"
-          summary="11 supplied Lesson 3 entries"
-          count={decks.lesson3Vocabulary.cards.length}
-          nested
-          checked={selected.has(keys.lesson3Vocabulary)}
-          onCheckedChange={(checked) => setSelected((current) => updateSet(current, [keys.lesson3Vocabulary], checked))}
-        >
+      <FilterDisclosure title="Lesson 3" summary={`${lesson3State.selectedCount} of ${lesson3Keys.length} groups selected`} checked={lesson3State.checked} mixed={lesson3State.mixed} onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson3Keys, checked))}>
+        <FilterDisclosure title="Vocabulary" summary="11 supplied Lesson 3 entries" count={decks.lesson3Vocabulary.cards.length} nested checked={selected.has(keys.lesson3Vocabulary)} onCheckedChange={(checked) => setSelected((current) => updateSet(current, [keys.lesson3Vocabulary], checked))}>
           <FilterSection title="Lesson 3 vocabulary" description="This source is tracked separately from grammar progress.">
             <FilterCheckbox label="All Lesson 3 vocabulary" count={decks.lesson3Vocabulary.cards.length} checked={selected.has(keys.lesson3Vocabulary)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.lesson3Vocabulary], checked))} />
           </FilterSection>
         </FilterDisclosure>
 
-        <FilterDisclosure
-          title="Grammar"
-          summary={`${lesson3GrammarState.selectedCount} of ${lesson3GrammarKeys.length} paradigms selected`}
-          count={decks.lesson3Grammar.cards.length}
-          nested
-          checked={lesson3GrammarState.checked}
-          mixed={lesson3GrammarState.mixed}
-          onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson3GrammarKeys, checked))}
-        >
+        <FilterDisclosure title="Grammar" summary={`${lesson3GrammarState.selectedCount} of ${lesson3GrammarKeys.length} paradigms selected`} count={decks.lesson3Grammar.cards.length} nested checked={lesson3GrammarState.checked} mixed={lesson3GrammarState.mixed} onCheckedChange={(checked) => setSelected((current) => updateSet(current, lesson3GrammarKeys, checked))}>
           <FilterSection title="Lesson 3 grammar" description="Present active forms from the Lesson 3 paradigm of παιδεύω.">
             <FilterCheckbox label="Present Active Indicative" count={countGrammar("Present Active Indicative")} checked={selected.has(keys.presentActiveIndicative)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.presentActiveIndicative], checked))} />
             <FilterCheckbox label="Present Active Infinitive" count={countGrammar("Present Active Infinitive")} checked={selected.has(keys.presentActiveInfinitive)} onChange={(checked) => setSelected((current) => updateSet(current, [keys.presentActiveInfinitive], checked))} />
