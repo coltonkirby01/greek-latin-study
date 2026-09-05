@@ -111,23 +111,9 @@
   background: var(--surface);
 }
 
-.stats-session-choice label {
-  min-width: 0;
-  display: flex;
-  gap: 0.65rem;
-  align-items: flex-start;
-  cursor: pointer;
-}
-
 .stats-session-choice input {
   margin-top: 0.2rem;
   flex: 0 0 auto;
-}
-
-.stats-session-choice label span {
-  min-width: 0;
-  display: grid;
-  gap: 0.14rem;
 }
 
 .stats-session-choice strong {
@@ -406,10 +392,6 @@
   border-top: 1px solid var(--line);
 }
 
-.stats-recent-row:first-child {
-  border-top: 0;
-}
-
 .stats-recent-row > div:first-child {
   min-width: 0;
   display: grid;
@@ -443,8 +425,7 @@
   text-transform: capitalize;
 }
 
-.stats-empty,
-.stats-legacy-note {
+.stats-empty {
   color: var(--muted-foreground);
 }
 
