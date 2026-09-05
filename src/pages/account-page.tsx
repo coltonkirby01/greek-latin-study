@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../features/auth/auth-context";
 import { exportProgress, importProgressFile } from "../features/study/legacy-import";
 import { loadLocalEnvelope, loadProgressEnvelope, replaceLocalEnvelope, saveProgressEnvelope } from "../features/study/progress-repository";
+import "./account-page.css";
 
 type View = "signin" | "signup" | "reset";
 const deckNames = [["greek-i", "Greek I"], ["dickinson-latin-core", "Dickinson Latin"], ["henle-part1-forms", "Henle Grammar"]] as const;
