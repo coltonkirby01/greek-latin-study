@@ -29,7 +29,6 @@ type SessionMeta = { id: string; startedAt: number; name?: string };
 type WarmupMeta = SessionMeta & { remaining: number; total: number };
 const WARMUP_CARDS = 5;
 const makeSession = (): SessionMeta => ({ id: crypto.randomUUID(), startedAt: Date.now() });
-const sessionDateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
 
 const PropsDefaults = { forward: "Forward", reverse: "Reverse" } as const;
 
@@ -56,6 +55,14 @@ export function retainSelectedCandidate(current: Candidate | null, sources: Stud
 }
 
 function sessionLabel(session: ManagedSession) { return displayManagedSessionName(session); }
+
+export function currentSessionDisplayName(language: "Greek" | "Latin", sources: readonly string[], customName?: string) {
+  const custom = customName?.trim();
+  if (custom) return custom;
+  const uniqueSources = [...new Set(sources.filter(Boolean))];
+  const focus = uniqueSources.length === 1 ? uniqueSources[0] : uniqueSources.length === 2 ? uniqueSources.join(" + ") : "Mixed study";
+  return `${language} · ${focus}`;
+}
 
 function availableCards(source: StudySourceDefinition, state: StudyModeState) {
   if (!source.deck.staged) return source.cards;
@@ -118,6 +125,12 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const deckIdsKey = useMemo(() => [...new Set([...sessionDeckIds, ...sources.map((source) => source.deck.id)])].sort().join("|"), [sessionDeckIds, sources]);
   const selectionSignature = useMemo(() => `${resetKey}::${sources.map((source) => `${source.id}:${source.studyKey}:${source.cards.length}`).join("|")}`, [resetKey, sources]);
   const sessionCatalog = useMemo(() => collectManagedSessions(envelopes).filter((item) => item.language === sessionLanguage), [envelopes, sessionLanguage]);
+  const currentManagedSession = useMemo(() => sessionCatalog.find((item) => !item.inferred && item.id === session.id) ?? null, [session.id, sessionCatalog]);
+  const currentSessionName = useMemo(() => currentSessionDisplayName(
+    sessionLanguage,
+    currentManagedSession?.sources ?? sources.map((source) => source.label),
+    currentManagedSession?.name ?? session.name,
+  ), [currentManagedSession, session.name, sessionLanguage, sources]);
 
   const modeFor = useCallback((source: StudySourceDefinition) => {
     const envelope = envelopesRef.current[source.deck.id];
@@ -237,7 +250,6 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
     saveMode(candidate.source, presentCard(state, candidate.card));
     setCurrent(candidate);
   }
-
   function resetUi() { setRevealed(false); setReviewFront(false); setBacktracking(false); setResult(null); setDifficulty(null); setCapturedTimeMs(null); setEditingTransaction(null); }
 
   useEffect(() => {
@@ -378,8 +390,8 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
   const currentMeta = cardMeta?.(current.card, current.source);
   const showingAnswer = revealed && !reviewFront;
   const gated = startGateOpen && !revealed && !editingTransaction;
-  const selectedPastSession = sessionCatalog.some((item) => !item.inferred && item.id === session.id) ? session.id : "";
-  const sessionControlValue = selectedPastSession || "__current__";
+  const sessionControlValue = "__current__";
+  const selectableSessions = sessionCatalog.filter((item) => item.id !== session.id);
 
   return <div className="study-grid" data-testid="study-session" data-study-key={current.source.studyKey}>
     <section className={`study-panel panel-surface ${gated ? "is-gated" : ""}`} aria-label={`${deck.title} study card`}>
@@ -388,7 +400,7 @@ export function MultiSourceStudySession({ deck, sources, direction, onDirectionC
         <div className="toolbar-control-group">
           {onDirectionChange && <div className="segmented-control" aria-label="Study direction">{(["forward", "reverse"] as StudyDirection[]).map((value) => <button key={value} type="button" aria-pressed={direction === value} onClick={() => onDirectionChange(value)}>{directionLabels[value]}</button>)}</div>}
           <label className="compact-select-label"><span className="sr-only">Card order</span><select value={selectionMode} onChange={(event) => changeOrder(event.target.value as SelectionMode)}><option value="adaptive">Adaptive review</option><option value="sequential">Sequential</option></select></label>
-          <label className="compact-select-label"><span className="sr-only">Study session</span><select value={sessionControlValue} disabled={Boolean(editingTransaction)} onChange={(event) => { const value = event.target.value; if (value === "__new__") startNewSession(); else if (value !== "__current__") continueSession(value); }}><option value="__current__">Current session · {sessionDateFormatter.format(session.startedAt)}</option><option value="__new__">Start new session</option>{sessionCatalog.map((item) => <option key={item.id} value={item.id} disabled={item.inferred}>{sessionLabel(item)}</option>)}</select></label>
+          <label className="compact-select-label"><span className="sr-only">Study session</span><select value={sessionControlValue} disabled={Boolean(editingTransaction)} onChange={(event) => { const value = event.target.value; if (value === "__new__") startNewSession(); else if (value !== "__current__") continueSession(value); }}><option value="__current__">{currentSessionName}</option><option value="__new__">Start new session</option>{selectableSessions.map((item) => <option key={item.id} value={item.id} disabled={item.inferred}>{sessionLabel(item)}</option>)}</select></label>
           <button type="button" className="small-outline-button" onClick={() => setStartGateOpen(true)} disabled={revealed || Boolean(editingTransaction) || startGateOpen}>Pause timer</button>
           <Link className="small-outline-button" to="/stats">Stats</Link>
         </div>
