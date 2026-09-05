@@ -76,18 +76,6 @@
   letter-spacing: 0.02em;
 }
 
-/* A centered scroll container can make the top of an oversized card unreachable.
-   Auto margins center short cards, then collapse to zero when the content is taller
-   than the face so every line remains reachable from the top on both sides. */
-.flashcard-face {
-  justify-content: flex-start;
-  overscroll-behavior: contain;
-}
-
-.flashcard-face > .card-side:first-child {
-  margin-top: auto;
-}
-
-.flashcard-face > :last-child {
-  margin-bottom: auto;
-}
+.flashcard-face { justify-content: flex-start; }
+.flashcard-face > .card-side:first-child { margin-top: auto; }
+.flashcard-face > :last-child { margin-bottom: auto; }
