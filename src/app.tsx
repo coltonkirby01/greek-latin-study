@@ -6,7 +6,6 @@ const HomePage = lazy(async () => ({ default: (await import("./pages/home-page")
 const GreekPage = lazy(async () => ({ default: (await import("./pages/greek-page")).GreekPage }));
 const LatinPage = lazy(async () => ({ default: (await import("./pages/latin-page")).LatinPage }));
 const HenlePage = lazy(async () => ({ default: (await import("./pages/henle-page")).HenlePage }));
-const DeckLibraryPage = lazy(async () => ({ default: (await import("./pages/deck-library-page")).DeckLibraryPage }));
 const DynamicDeckPage = lazy(async () => ({ default: (await import("./pages/dynamic-deck-page")).DynamicDeckPage }));
 const ReadingPage = lazy(async () => ({ default: (await import("./pages/reading-page")).ReadingPage }));
 const AccountPage = lazy(async () => ({ default: (await import("./pages/account-page")).AccountPage }));
@@ -26,7 +25,6 @@ export function App() {
           <Route path="greek" element={<GreekPage />} />
           <Route path="latin" element={<LatinPage />} />
           <Route path="henle" element={<HenlePage />} />
-          <Route path="decks" element={<DeckLibraryPage />} />
           <Route path="decks/:slug" element={<DynamicDeckPage />} />
           <Route path="reading" element={<ReadingPage />} />
           <Route path="account" element={<AccountPage />} />
