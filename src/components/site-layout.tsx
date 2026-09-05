@@ -4,9 +4,22 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import { primaryNavLinks } from "../config/site";
 import { useAuth } from "../features/auth/auth-context";
 
+function accountInitials(email: string | null | undefined, metadata: Record<string, unknown> | undefined) {
+  const name = [metadata?.full_name, metadata?.name].find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (name) {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    return `${parts[0]?.[0] ?? ""}${parts.length > 1 ? parts.at(-1)?.[0] ?? "" : parts[0]?.[1] ?? ""}`.toUpperCase();
+  }
+  const local = (email ?? "A").split("@")[0];
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length > 1) return `${parts[0][0] ?? ""}${parts.at(-1)?.[0] ?? ""}`.toUpperCase();
+  return local.slice(0, 2).toUpperCase() || "A";
+}
+
 export function SiteLayout() {
   const { user, isAdmin } = useAuth();
   const [open, setOpen] = useState(false);
+  const initials = user ? accountInitials(user.email, user.user_metadata) : null;
 
   return <>
     <header className="site-header">
@@ -17,7 +30,7 @@ export function SiteLayout() {
           {primaryNavLinks.map(({ label, href }) => <NavLink key={href} to={href} end={href === "/"} onClick={() => setOpen(false)}>{label}</NavLink>)}
           {isAdmin && <NavLink to="/admin">Admin</NavLink>}
         </nav>
-        <NavLink className="identity-link" to="/account">{user ? user.email ?? "Account" : "Sign in"}</NavLink>
+        {user ? <NavLink className="identity-link identity-avatar" to="/account" title={user.email ?? "Account"} aria-label={`Account${user.email ? ` for ${user.email}` : ""}`}><span aria-hidden="true">{initials}</span></NavLink> : <NavLink className="identity-link header-sign-in" to="/account">Sign in</NavLink>}
       </div>
     </header>
     <Outlet />
