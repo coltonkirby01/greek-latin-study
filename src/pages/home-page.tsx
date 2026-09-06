@@ -1,5 +1,5 @@
 import { ArrowRight, BookOpenText, Cloud, ExternalLink, Repeat2 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { homeCourses, type CourseId } from "../config/site";
 import { useAuth } from "../features/auth/auth-context";
@@ -10,6 +10,12 @@ const courseVisuals: Record<CourseId, ReactNode> = {
   latin: <span className="course-glyph course-glyph-word latin-course-title">LINGVA LATINA</span>,
   reading: <span className="course-icon"><BookOpenText /></span>,
 };
+
+const overlayLinkStyle: CSSProperties = { position: "absolute", inset: 0, zIndex: 1, borderRadius: "inherit" };
+const protectedTextStyle: CSSProperties = { position: "relative", zIndex: 2 };
+const interactiveStyle: CSSProperties = { position: "relative", zIndex: 3 };
+const visualLinkStyle: CSSProperties = { ...interactiveStyle, width: "fit-content", display: "inline-flex", color: "inherit", textDecoration: "none" };
+const titleLinkStyle: CSSProperties = { color: "inherit", textDecoration: "none" };
 
 export function HomePage() {
   const { user } = useAuth();
@@ -32,17 +38,17 @@ export function HomePage() {
 function Course({ id, visual, count, eyebrow, title, description, sourceLinks, href, linkLabel }: { id: CourseId; visual: ReactNode; count: string; eyebrow: string; title: string; description: string; sourceLinks: readonly { label: string; href: string }[]; href: string; linkLabel: string }) {
   const flashcardCourse = id === "greek" || id === "latin";
   return <article className="course-card">
-    <Link className="course-card-blank-link" to={href} aria-hidden="true" tabIndex={-1} />
+    <Link to={href} aria-hidden="true" tabIndex={-1} style={overlayLinkStyle} />
     <div className="course-card-top">
-      {flashcardCourse ? <Link className="course-visual-link" to={href} aria-label={`Open ${eyebrow} flashcards`}>{visual}</Link> : visual}
-      {count && <span className="course-count">{count}</span>}
+      {flashcardCourse ? <Link to={href} aria-label={`Open ${eyebrow} flashcards`} style={visualLinkStyle}>{visual}</Link> : visual}
+      {count && <span className="course-count" style={protectedTextStyle}>{count}</span>}
     </div>
-    <p className="eyebrow">{eyebrow}</p>
-    <h2>{id === "reading" ? <Link className="course-title-link" to={href}>{title}</Link> : title}</h2>
-    <p>{description}</p>
-    {sourceLinks.length > 0 && <div className="course-source-links" aria-label={`${eyebrow} sources`}>
+    <p className="eyebrow" style={protectedTextStyle}>{eyebrow}</p>
+    <h2 style={protectedTextStyle}>{id === "reading" ? <Link to={href} style={titleLinkStyle}>{title}</Link> : title}</h2>
+    <p style={protectedTextStyle}>{description}</p>
+    {sourceLinks.length > 0 && <div className="course-source-links" aria-label={`${eyebrow} sources`} style={interactiveStyle}>
       {sourceLinks.map((source) => <a key={source.href} href={source.href} target="_blank" rel="noreferrer">{source.label} <ExternalLink aria-hidden="true" /></a>)}
     </div>}
-    <Link className="course-link" to={href}>{linkLabel} <ArrowRight /></Link>
+    <Link className="course-link" to={href} style={interactiveStyle}>{linkLabel} <ArrowRight /></Link>
   </article>;
 }
