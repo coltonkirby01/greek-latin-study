@@ -30,18 +30,18 @@ function render(items: HenleSourceCard[]) {
 }
 
 describe("Henle whole charts", () => {
-  it("makes explicit Henle stem and ending rows clear in the component guide", () => {
+  it("keeps explicit Henle stem and ending labels without instructional text", () => {
     const html = render([
       card({ id: "stem", prompt: "Present stem", answer: "amā-", verb_form_group: "Stems" }),
       card({ id: "ending", prompt: "First person plural", answer: "-mus", verb_form_group: "Personal Endings" }),
     ]);
 
     expect(html).toContain("Stem / Ending");
-    expect(html).toContain("How to read this answer");
-    expect(html).toContain("Henle stem:");
+    expect(html).toContain(">Stem<");
     expect(html).toContain("amā-");
-    expect(html).toContain("Henle ending:");
+    expect(html).toContain(">Ending<");
     expect(html).toContain("-mus");
+    expect(html).not.toContain("How to read this answer");
   });
 
   it("recognizes stem and ending labels from broader source tags and prompt wording", () => {
@@ -50,8 +50,9 @@ describe("Henle whole charts", () => {
       card({ id: "tagged-ending", prompt: "Ending", answer: "-tis", tags: ["personal-endings"] }),
     ]);
 
-    expect(html).toContain("Henle stem:");
-    expect(html).toContain("Henle ending:");
+    expect(html).toContain(">Stem<");
+    expect(html).toContain(">Ending<");
+    expect(html).not.toContain("How to read this answer");
   });
 
   it("splits ordinary finite forms into form base, personal ending, and complete form", () => {
@@ -67,7 +68,7 @@ describe("Henle whole charts", () => {
     expect(html).toContain("-mus");
     expect(html).toContain("Complete form");
     expect(html).toContain("laudāmus");
-    expect(html).toContain("stem/form base + personal ending");
+    expect(html).not.toContain("How to read this answer");
   });
 
   it("splits passive finite forms using passive personal endings", () => {
@@ -89,6 +90,7 @@ describe("Henle whole charts", () => {
     ]);
 
     expect(html).toContain("Complete form");
-    expect(html).toContain("does not supply a defensible stem/personal-ending split");
+    expect(html).not.toContain("Stem / base");
+    expect(html).not.toContain("How to read this answer");
   });
 });
