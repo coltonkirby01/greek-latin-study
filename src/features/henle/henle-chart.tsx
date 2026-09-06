@@ -78,27 +78,6 @@ function answer(item: HenleSourceCard | undefined, revealed: boolean) {
   </span>;
 }
 
-function ComponentGuide({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
-  if (!revealed) return null;
-  const stems = [...new Set(items.filter((item) => answerKind(item) === "Stem").map((item) => item.answer))];
-  const endings = [...new Set(items.filter((item) => answerKind(item) === "Ending").map((item) => item.answer))];
-  const splitForms = items.filter((item) => personalEndingParts(item));
-  const hasExplicitComponents = stems.length > 0 || endings.length > 0;
-  return <div className="henle-component-guide" style={{ display: "grid", gap: "0.45rem", margin: "0.2rem 0 0.8rem", padding: "0.7rem 0.8rem", border: "1px solid var(--line)", borderRadius: "8px", background: "var(--surface)" }}>
-    <strong style={{ fontSize: "0.78rem", letterSpacing: "0.055em", textTransform: "uppercase" }}>How to read this answer</strong>
-    {hasExplicitComponents && <>
-      {stems.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Stem")}<span><strong>Henle stem:</strong> {stems.join(", ")}</span></div>}
-      {endings.length > 0 && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Ending")}<span><strong>Henle ending:</strong> {endings.join(", ")}</span></div>}
-    </>}
-    {splitForms.length > 0 && <div style={{ display: "grid", gap: "0.35rem" }}>
-      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Stem / base")}<span>The material before the personal ending. It can contain the verb stem plus a tense or mood sign, and surface vowel changes can alter the visible stem.</span></div>
-      <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Ending")}<span>The personal ending is separated from the form base.</span></div>
-      <span style={{ fontSize: "0.84rem" }}>Each decomposable finite form below shows <strong>stem/form base + personal ending → complete form</strong>.</span>
-    </div>}
-    {!hasExplicitComponents && !splitForms.length && <div style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", gap: "0.5rem" }}>{componentBadge("Complete form")}<span>This rule does not supply a defensible stem/personal-ending split in the Henle data, so the completed form is shown without inventing one.</span></div>}
-  </div>;
-}
-
 function Declension({ items, revealed }: { items: HenleSourceCard[]; revealed: boolean }) {
   const parsed = items.map((item) => { const match = item.prompt.match(/^(Nominative|Genitive|Dative|Accusative|Ablative|Vocative) (Masculine|Feminine|Neuter) (Singular|Plural)$/); return match ? { item, case: match[1], gender: match[2], number: match[3] } : null; });
   if (parsed.some((item) => !item)) return null; const rows = parsed.filter(Boolean) as Array<{ item: HenleSourceCard; case: string; gender: string; number: string }>;
@@ -130,6 +109,5 @@ export function HenleChartTable({ items, revealed }: { items: HenleSourceCard[];
   const caseNumber = items.every((item) => /^(Nominative|Genitive|Dative|Accusative|Ablative|Vocative) (Singular|Plural)$/.test(item.prompt));
   const person = items.every((item) => /^(First|Second|Third) Person (Singular|Plural)$/.test(item.prompt));
   const principal = items.every((item) => /^(First|Second|Third|Fourth) Conjugation — (.+)$/.test(item.prompt));
-  const table = declension ? <Declension {...{ items, revealed }} /> : caseNumber ? <Matrix {...{ items, revealed }} kind="case" /> : person ? <Matrix {...{ items, revealed }} kind="person" /> : principal ? <PrincipalParts {...{ items, revealed }} /> : <Generic {...{ items, revealed }} />;
-  return <><ComponentGuide {...{ items, revealed }} />{table}</>;
+  return declension ? <Declension {...{ items, revealed }} /> : caseNumber ? <Matrix {...{ items, revealed }} kind="case" /> : person ? <Matrix {...{ items, revealed }} kind="person" /> : principal ? <PrincipalParts {...{ items, revealed }} /> : <Generic {...{ items, revealed }} />;
 }
