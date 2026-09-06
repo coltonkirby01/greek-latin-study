@@ -19,45 +19,6 @@
   font-variant: small-caps;
 }
 
-.course-card-blank-link {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  border-radius: inherit;
-}
-
-.course-visual-link,
-.course-title-link {
-  color: inherit;
-  text-decoration: none;
-}
-
-.course-visual-link {
-  position: relative;
-  z-index: 3;
-  width: fit-content;
-  display: inline-flex;
-}
-
-.course-visual-link:hover .course-glyph-word,
-.course-title-link:hover {
-  text-decoration: underline;
-}
-
-.course-card > .eyebrow,
-.course-card > h2,
-.course-card > p:not(.eyebrow),
-.course-count {
-  position: relative;
-  z-index: 2;
-}
-
-.course-source-links,
-.course-link {
-  position: relative;
-  z-index: 3;
-}
-
 .course-source-links {
   margin: -0.25rem 0 1rem;
   display: grid;
