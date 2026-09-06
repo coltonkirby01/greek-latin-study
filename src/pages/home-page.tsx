@@ -29,10 +29,17 @@ export function HomePage() {
   </main>;
 }
 
-function Course({ visual, count, eyebrow, title, description, sourceLinks, href, linkLabel }: { visual: ReactNode; count: string; eyebrow: string; title: string; description: string; sourceLinks: readonly { label: string; href: string }[]; href: string; linkLabel: string }) {
+function Course({ id, visual, count, eyebrow, title, description, sourceLinks, href, linkLabel }: { id: CourseId; visual: ReactNode; count: string; eyebrow: string; title: string; description: string; sourceLinks: readonly { label: string; href: string }[]; href: string; linkLabel: string }) {
+  const flashcardCourse = id === "greek" || id === "latin";
   return <article className="course-card">
-    <div className="course-card-top">{visual}{count && <span className="course-count">{count}</span>}</div>
-    <p className="eyebrow">{eyebrow}</p><h2><Link className="course-title-link" to={href}>{title}</Link></h2><p>{description}</p>
+    <Link className="course-card-blank-link" to={href} aria-hidden="true" tabIndex={-1} />
+    <div className="course-card-top">
+      {flashcardCourse ? <Link className="course-visual-link" to={href} aria-label={`Open ${eyebrow} flashcards`}>{visual}</Link> : visual}
+      {count && <span className="course-count">{count}</span>}
+    </div>
+    <p className="eyebrow">{eyebrow}</p>
+    <h2>{id === "reading" ? <Link className="course-title-link" to={href}>{title}</Link> : title}</h2>
+    <p>{description}</p>
     {sourceLinks.length > 0 && <div className="course-source-links" aria-label={`${eyebrow} sources`}>
       {sourceLinks.map((source) => <a key={source.href} href={source.href} target="_blank" rel="noreferrer">{source.label} <ExternalLink aria-hidden="true" /></a>)}
     </div>}
